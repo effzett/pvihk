@@ -194,6 +194,14 @@ jobs:
         shell: bash
         run: echo "BUILD_NUMBER=$(cat build_number.txt)" >> $GITHUB_ENV
 
+
+      - name: Find CBC path
+        shell: bash -l {0}
+        run: |
+          echo "CBC_PATH=$(which cbc)" >> $GITHUB_ENV
+          which cbc
+          cbc --version
+
       - name: Build macOS app with PyInstaller
         shell: bash -l {0}
         run: |
@@ -207,6 +215,7 @@ jobs:
             --add-data "$(python -c 'import pulp, os; print(os.path.dirname(pulp.__file__))'):pulp" \
             --add-data "build_number.txt:." \
             --add-data "build_date.txt:." \
+            --add-binary "$CBC_PATH:." \
             pvihk.py
 
       - name: Prepare content for DMG

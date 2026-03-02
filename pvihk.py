@@ -1,3 +1,15 @@
+
+
+import sys
+import os
+
+def get_cbc_path():
+    if getattr(sys, "frozen", False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(__file__)
+    return os.path.join(base_path, "cbc")
+
 import sys
 import os
 import platform
@@ -164,7 +176,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
 
     import time
     start_time = time.time()
-    prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
+    prob.solve(pulp.PULP_CBC_CMD(path=get_cbc_path(), timeLimit=10, msg=True))
     end_time = time.time()
 
     solver_status = pulp.LpStatus[prob.status]
