@@ -1,3 +1,25 @@
+
+
+import sys
+import os
+
+def get_cbc_path():
+    if getattr(sys, "frozen", False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(__file__)
+    return os.path.join(base_path, "cbc")
+
+
+
+def ensure_cbc_on_path():
+    """Ensure the bundled 'cbc' executable can be found by PuLP when frozen (PyInstaller --onefile)."""
+    if getattr(sys, "frozen", False):
+        base_path = sys._MEIPASS
+        # Put the extraction directory first in PATH so PuLP finds 'cbc' without needing a path= argument.
+        os.environ["PATH"] = base_path + os.pathsep + os.environ.get("PATH", "")
+
+
 import sys
 import os
 import platform
