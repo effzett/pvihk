@@ -218,6 +218,11 @@ jobs:
             --add-binary "$CBC_PATH:." \
             pvihk.py
 
+      - name: Fix CBC permissions in .app bundle
+        run: |
+          chmod +x dist/pvihk.app/Contents/MacOS/cbc
+          echo "✅ CBC permissions fixed: $(ls -la dist/pvihk.app/Contents/MacOS/cbc)"
+
       - name: Prepare content for DMG
         run: |
           rm -rf dmg_content && mkdir dmg_content
