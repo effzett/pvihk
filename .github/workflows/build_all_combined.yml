@@ -134,6 +134,8 @@ jobs:
             New-Item -ItemType Directory -Path "dist"
           }
 
+      - name: Install NSIS
+        run: choco install nsis -y
       - name: Run NSIS
         run: makensis /DVERSION=${{ needs.init.outputs.version }} installer/pvihk_installer.nsi
 
