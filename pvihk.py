@@ -68,14 +68,22 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
 
     Erwartet:
         eingabedaten["zeitslots"] = [liste_tag1, liste_tag2]
-    """
 
+    Kandidaten mit Prefix "X_" sind reine Klausur-Korrekturen:
+        - werden gleichmäßig auf Korrektoren verteilt
+        - erscheinen NICHT im Tagesplan (keine Anwesenheit nötig)
+        - erscheinen in den Versand-/Weitergabelisten
+    """
 
     korrektornamen = list(eingabedaten["verfügbarkeiten"].keys())
     klausurnamen = eingabedaten["kandidaten"]
-    klausuren = [f"K_{i}" for i in klausurnamen.keys()]
     termine = eingabedaten["pruefungstage"]
     anzahl_korrektoren = eingabedaten.get("anzahl_korrektoren_pro_klausur", 2)
+
+    # --- Kandidaten trennen: Präsenzprüfung vs. reine Klausurkorrektur (X_-Prefix) ---
+    praesenz_klausuren   = [f"K_{i}" for i, name in klausurnamen.items() if not name.startswith("X_")]
+    nur_klausur_klausuren = [f"K_{i}" for i, name in klausurnamen.items() if     name.startswith("X_")]
+    alle_klausuren = praesenz_klausuren + nur_klausur_klausuren
 
     # === Zeitslots überprüfen ===
     zeitslots = eingabedaten.get("zeitslots")
@@ -92,47 +100,62 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         for tag in tage:
             tag_verfuegbarkeit[tag].append(korrektor)
 
-    anzahl_tag1 = (len(klausuren) + 1) // 2
-    anzahl_tag2 = len(klausuren) - anzahl_tag1
+    # Tagesaufteilung nur für Präsenz-Kandidaten
+    anzahl_tag1 = (len(praesenz_klausuren) + 1) // 2
+    anzahl_tag2 = len(praesenz_klausuren) - anzahl_tag1
 
     prob = pulp.LpProblem("Korrekturverteilung", pulp.LpMinimize)
 
-    x = pulp.LpVariable.dicts("x", ((k, p) for k in klausuren for p in korrektornamen), 0, 1, pulp.LpBinary)
-    klausur_tag = pulp.LpVariable.dicts("klausur_tag", ((k, t) for k in klausuren for t in [0, 1]), 0, 1, pulp.LpBinary)
-    anwesenheit = pulp.LpVariable.dicts("anwesenheit", ((p, t) for p in korrektornamen for t in [0, 1]), 0, 1, pulp.LpBinary)
+    # x für ALLE Kandidaten (Präsenz + nur Klausur)
+    x = pulp.LpVariable.dicts("x",
+        ((k, p) for k in alle_klausuren for p in korrektornamen), 0, 1, pulp.LpBinary)
 
-    belastung = {p: pulp.lpSum(x[k, p] for k in klausuren) for p in korrektornamen}
-    mittlere_belastung = 2 * len(klausuren) / len(korrektornamen)
+    # klausur_tag und anwesenheit nur für Präsenz-Kandidaten
+    klausur_tag = pulp.LpVariable.dicts("klausur_tag",
+        ((k, t) for k in praesenz_klausuren for t in [0, 1]), 0, 1, pulp.LpBinary)
+    anwesenheit = pulp.LpVariable.dicts("anwesenheit",
+        ((p, t) for p in korrektornamen for t in [0, 1]), 0, 1, pulp.LpBinary)
+
+    # Belastung über ALLE Kandidaten → faire Gesamtverteilung
+    belastung = {p: pulp.lpSum(x[k, p] for k in alle_klausuren) for p in korrektornamen}
+    mittlere_belastung = anzahl_korrektoren * len(alle_klausuren) / len(korrektornamen)
     abweichung = pulp.LpVariable.dicts("abweichung", korrektornamen, 0)
 
     for p in korrektornamen:
         prob += belastung[p] - mittlere_belastung <= abweichung[p]
         prob += mittlere_belastung - belastung[p] <= abweichung[p]
 
-# Hier erfolgt die Gewichtung: Gleichverteilung / Anwesenheit
+    # Gewichtung: Gleichverteilung / Anwesenheit
     prob += (
         1.0 * pulp.lpSum(abweichung[p] for p in korrektornamen) +
         0.1 * pulp.lpSum(anwesenheit[p, t] for p in korrektornamen for t in [0, 1])
     )
 
-    for k in klausuren:
+    # Jede Klausur (Präsenz + nur-Klausur) bekommt genau anzahl_korrektoren Korrektoren
+    for k in alle_klausuren:
         prob += pulp.lpSum(x[k, p] for p in korrektornamen) == anzahl_korrektoren
+
+    # Nur für Präsenz-Kandidaten: Tageszuordnung + Verfügbarkeitseinschränkung
+    for k in praesenz_klausuren:
         for t in [0, 1]:
             gruppe = tag_verfuegbarkeit[termine[t]]
             prob += klausur_tag[k, t] <= pulp.lpSum(x[k, p] for p in gruppe)
         prob += klausur_tag[k, 0] + klausur_tag[k, 1] == 1
 
-    prob += pulp.lpSum(klausur_tag[k, 0] for k in klausuren) == anzahl_tag1
-    prob += pulp.lpSum(klausur_tag[k, 1] for k in klausuren) == anzahl_tag2
+    if praesenz_klausuren:
+        prob += pulp.lpSum(klausur_tag[k, 0] for k in praesenz_klausuren) == anzahl_tag1
+        prob += pulp.lpSum(klausur_tag[k, 1] for k in praesenz_klausuren) == anzahl_tag2
 
+    # Anwesenheits-Trigger: nur durch Präsenz-Zuordnungen (nicht durch nur-Klausur)
     for p in korrektornamen:
         for t in [0, 1]:
             if p in tag_verfuegbarkeit[termine[t]]:
-                for k in klausuren:
+                for k in praesenz_klausuren:
                     prob += x[k, p] <= anwesenheit[p, t]
 
-    for t in [0, 1]:
-        prob += pulp.lpSum(anwesenheit[p, t] for p in tag_verfuegbarkeit[termine[t]]) >= 3
+    if praesenz_klausuren:
+        for t in [0, 1]:
+            prob += pulp.lpSum(anwesenheit[p, t] for p in tag_verfuegbarkeit[termine[t]]) >= 3
 
     import time
     start_time = time.time()
@@ -162,10 +185,11 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         if var.varValue == 1:
             klausur_tage[k] = t
 
-    klausurverteilung = defaultdict(list)
-    versand_start = defaultdict(list)
-    weitergaben = defaultdict(list)
+    klausurverteilung = defaultdict(list)   # nur Präsenz → Tagesplan
+    versand_start     = defaultdict(list)   # alle Kandidaten → Versandliste
+    weitergaben       = defaultdict(list)   # alle Kandidaten → Weitergabeliste
 
+    # --- Tagesplan: nur Präsenz-Kandidaten ---
     for t in [0, 1]:
         datum = termine[t]
         klausuren_fuer_tag = sorted(k for k, tag in klausur_tage.items() if tag == t)
@@ -176,6 +200,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
             klausurname = klausurnamen[int(k.split("_")[1])]
             klausurverteilung[datum].append((zeit_str, klausurname, pruefer))
 
+    # --- Versand/Weitergabe: ALLE Kandidaten (Präsenz + nur-Klausur) ---
     paarweise = defaultdict(list)
     for k, pruefer in zuordnung.items():
         if len(pruefer) == 2:
@@ -185,6 +210,9 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         versand_start[p1].extend(klist)
         weitergaben[(p1, p2)].extend(klist)
 
+    # ================================================================
+    # PDF erstellen
+    # ================================================================
     class FooterPDF(FPDF):
         def footer(self):
             self.set_y(-10)
@@ -198,31 +226,49 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
     pdf.cell(0, 8, "Prüfungsverteilung nach Tagen und aktiven Korrektoren", ln=True)
     pdf.ln(3)
 
-    for datum, termine in klausurverteilung.items():
+    # --- Abschnitt 1: Tagesplan (nur Präsenzprüfungen) ---
+    for datum, eintraege in klausurverteilung.items():
         pdf.set_font("Arial", "B", 10)
         pdf.cell(0, 6, f"Zeitplan: {datum}", ln=True)
         pdf.set_fill_color(200, 200, 220)
-        pdf.cell(22, 6, "Zeit", border=1, fill=True)
-        pdf.cell(78, 6, "Prüfung", border=1, fill=True)
-        pdf.cell(85, 6, "Korrektoren", border=1, ln=True, fill=True)
+        pdf.cell(22, 6, "Zeit",       border=1, fill=True)
+        pdf.cell(78, 6, "Prüfung",    border=1, fill=True)
+        pdf.cell(85, 6, "Korrektoren",border=1, ln=True, fill=True)
         pdf.set_font("Arial", size=9)
-        for zeit, klausurname, pruefer in termine:
-            pdf.cell(22, 6, zeit, border=1)
-            pdf.cell(78, 6, klausurname, border=1)
-            pdf.cell(85, 6, ", ".join(pruefer), border=1, ln=True)
+        for zeit, klausurname, pruefer in eintraege:
+            pdf.cell(22, 6, zeit,                    border=1)
+            pdf.cell(78, 6, klausurname,             border=1)
+            pdf.cell(85, 6, ", ".join(pruefer),      border=1, ln=True)
         pdf.ln(3)
 
-    # Korrektorenübersicht mit Partnern
+    # --- Abschnitt 2: Nur-Klausur-Korrekturen (X_-Kandidaten, kein Zeitplan) ---
+    if nur_klausur_klausuren:
+        pdf.ln(4)
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 6, "Klausur-Korrekturen (ohne Präsenzprüfung)", ln=True)
+        pdf.set_font("Arial", "B", 9)
+        pdf.set_fill_color(220, 220, 200)
+        pdf.cell(100, 6, "Prüfling",    border=1, fill=True)
+        pdf.cell(85,  6, "Korrektoren", border=1, ln=True, fill=True)
+        pdf.set_font("Arial", size=9)
+        for k in nur_klausur_klausuren:
+            klausurname = klausurnamen[int(k.split("_")[1])]
+            pruefer     = zuordnung[k]
+            pdf.cell(100, 6, klausurname,        border=1)
+            pdf.cell(85,  6, ", ".join(pruefer), border=1, ln=True)
+        pdf.ln(3)
+
+    # --- Abschnitt 3: Korrektorenübersicht mit Partnern ---
     pdf.ln(4)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 6, "Korrektorenübersicht mit Partnern", ln=True)
     pdf.set_font("Arial", "B", 9)
-    pdf.cell(60, 6, "Korrektor (gesamt)", border=1)
+    pdf.cell(60,  6, "Korrektor (gesamt)",  border=1)
     pdf.cell(130, 6, "Verteilung auf Partner", border=1, ln=True)
     pdf.set_font("Arial", size=9)
 
     korrektor_partner = defaultdict(lambda: defaultdict(int))
-    korrektor_gesamt = defaultdict(int)
+    korrektor_gesamt  = defaultdict(int)
 
     for k, pruefer in zuordnung.items():
         if len(pruefer) == 2:
@@ -235,36 +281,45 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
     for p in sorted(korrektornamen):
         partnertext = ', '.join(f"{q}({n})" for q, n in sorted(korrektor_partner[p].items()))
         pdf.set_text_color(0, 0, 200)
-        pdf.cell(60, 6, f"{p} ({korrektor_gesamt[p]})", border=1)
+        pdf.cell(60,  6, f"{p} ({korrektor_gesamt[p]})", border=1)
         pdf.set_text_color(0)
         pdf.cell(130, 6, partnertext, border=1, ln=True)
 
+    # --- Abschnitt 4: Versand und Weitergabe (alle Kandidaten) ---
     pdf.add_page()
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 6, "Versand und Weitergabe der Klausuren", ln=True)
+    pdf.set_font("Arial", size=8)
+    pdf.set_text_color(120)
+    pdf.cell(0, 5, "* = reine Klausurkorrektur (keine Präsenzprüfung)", ln=True)
+    pdf.set_text_color(0)
     pdf.ln(4)
     pdf.set_font("Arial", "B", 10)
     for sender, klist in versand_start.items():
         pdf.cell(0, 6, f"{sender} erhält:", ln=True)
         pdf.set_font("Arial", size=10)
         for k in klist:
-            pdf.cell(0, 6, f"   - {klausurnamen[int(k.split('_')[1])]}", ln=True)
+            name = klausurnamen[int(k.split('_')[1])]
+            marker = " *" if name.startswith("X_") else ""
+            pdf.cell(0, 6, f"   - {name}{marker}", ln=True)
         pdf.set_font("Arial", "B", 10)
         pdf.ln(2)
     for (sender, empfaenger), klist in weitergaben.items():
         pdf.cell(0, 6, f"{sender} -> {empfaenger}:", ln=True)
         pdf.set_font("Arial", size=10)
         for k in klist:
-            pdf.cell(0, 6, f"   - {klausurnamen[int(k.split('_')[1])]}", ln=True)
+            name = klausurnamen[int(k.split('_')[1])]
+            marker = " *" if name.startswith("X_") else ""
+            pdf.cell(0, 6, f"   - {name}{marker}", ln=True)
         pdf.set_font("Arial", "B", 10)
         pdf.ln(2)
 
     pdf_bytes = pdf.output(dest='S').encode('latin1')
 
     return {
-        "pdf_data": pdf_bytes,
-        "verteilung": klausurverteilung,
-        "status": final_status
+        "pdf_data":   pdf_bytes,
+        "verteilung": klausurverteilung,   # nur Präsenz → GUI-Tabellen
+        "status":     final_status
     }
 
 
