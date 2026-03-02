@@ -28,19 +28,19 @@ jobs:
         id: get_number
         run: echo "build_number=$(cat build_number.txt)" >> $GITHUB_OUTPUT
 
-      - name: Lese Version aus build.py
+      - name: Lese Version aus versioning.py
         id: get_version
         run: |
-          echo "version=$(PYTHONPATH=. python3 -c 'from build import get_version; print(get_version(False))')" >> $GITHUB_OUTPUT
+          echo "version=$(PYTHONPATH=. python3 -c 'from versioning import get_app_metadata; print(get_app_metadata(increment=False)["VERSION"])')" >> $GITHUB_OUTPUT
 
       - name: Brich ab, wenn Plattform für Release-Tag schon veröffentlicht wurde
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tag="v2.0.${{ steps.get_number.outputs.build_number }}"
+          tag="v${{ steps.get_version.outputs.version }}"
           target="${{ github.event.inputs.target }}"
 
-          echo "Überprüfe Release-Tag: $tag für Zielplattform: $target"
+          echo "🔍 Überprüfe Release-Tag: $tag für Zielplattform: $target"
 
           if ! gh release view "$tag" > /dev/null 2>&1; then
             echo "✅ Release $tag existiert noch nicht – alles ok."
@@ -76,9 +76,6 @@ jobs:
       BUILD_NUMBER: ${{ needs.init.outputs.build_number }}
       VERSION: ${{ needs.init.outputs.version }}
     steps:
-      - name: Hier kommen deine Windows-Build-Schritte rein
-        run: echo "Würde jetzt Windows-Build für $env:BUILD_NUMBER machen"
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -120,6 +117,7 @@ jobs:
             --hidden-import=pulp \
             --add-data "${{ steps.find_pulp.outputs.pulp-path }};pulp" \
             --add-data "build_number.txt;." \
+            --add-data "build_date.txt;." \
             --add-binary "assets/cbc.exe;." \
             --collect-submodules PySide6 \
             --collect-data PySide6 \
@@ -150,20 +148,15 @@ jobs:
           if (!(Test-Path $setupPath)) {
             throw "$setupPath not found"
           }
-
-
-      - name: Create GitHub Release with versioned installer
-        uses: softprops/action-gh-release@v1
+      - name: Artefakte hochladen (Windows)
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ env.VERSION }}
-          name: Release v${{ env.VERSION }}
-          body: Version ${{ env.VERSION }}
-          files: |
+          name: windows-artifacts
+          path: |
             dist/pvihk.exe
             dist/PVIHK-${{ env.VERSION }}_setup.exe
             release/README_windows.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
   build-macos:
     name: macOS-Build
@@ -175,9 +168,6 @@ jobs:
       VERSION: ${{ needs.init.outputs.version }}
 
     steps:
-      - name: Hier kommen deine macOS-Build-Schritte rein
-        run: echo "Würde jetzt macOS-Build für $BUILD_NUMBER machen"
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -210,6 +200,7 @@ jobs:
             --hidden-import=pulp \
             --add-data "$(python -c 'import pulp, os; print(os.path.dirname(pulp.__file__))'):pulp" \
             --add-data "build_number.txt:." \
+            --add-data "build_date.txt:." \
             pvihk.py
 
       - name: Prepare content for DMG
@@ -239,16 +230,91 @@ jobs:
             "PVIHK-${{ env.VERSION }}.dmg" \
             dmg_content/
 
+      - name: Artefakte hochladen (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            PVIHK-${{ env.VERSION }}.dmg
+            release/README_mac.txt
 
-      - name: Upload DMG to GitHub Release
+  release:
+    name: Release-Erstellung (zentral)
+    runs-on: ubuntu-latest
+    needs: [ init, build-windows, build-macos ]
+    if: ${{ always() }}
+    env:
+      VERSION: ${{ needs.init.outputs.version }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Lade Release-Dateien herunter (aus anderen Jobs)
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Entpacke Artefakte rekursiv
+        run: |
+          find dist/windows-artifacts -type f -exec mv {} dist/ \; 2>/dev/null || true
+          find dist/macos-artifacts -type f -exec mv {} dist/ \; 2>/dev/null || true
+
+      - name: Zeige Inhalt von dist (Debug)
+        run: |
+          echo ">>> Dateien in dist/"
+          find dist -type f
+
+      - name: Zeige vorhandene Release-Assets (optional)
+        run: |
+          echo "🔎 Prüfe, ob Release v${{ env.VERSION }} bereits existiert:"
+          gh release view "v${{ env.VERSION }}" --json assets -q '.assets[].name' || echo "ℹ️ Noch kein Release vorhanden – vermutlich erster Lauf."
+
+      - name: Abbruch, wenn Assets mit gleicher Version bereits vorhanden sind
+        run: |
+          echo "🔍 Überprüfe, ob Plattform-Dateien bereits hochgeladen wurden..."
+          assets=$(gh release view "v${{ env.VERSION }}" --json assets -q '.assets[].name' 2>/dev/null || echo "")
+
+          found=false
+
+          if [[ "${{ github.event.inputs.target }}" == "windows" || "${{ github.event.inputs.target }}" == "both" ]]; then
+            if echo "$assets" | grep -q "pvihk.exe"; then
+              echo "❌ Windows-Datei 'pvihk.exe' ist bereits im Release."
+              found=true
+            fi
+            if echo "$assets" | grep -q "PVIHK-${{ env.VERSION }}_setup.exe"; then
+              echo "❌ Windows-Installer ist bereits im Release."
+              found=true
+            fi
+          fi
+
+          if [[ "${{ github.event.inputs.target }}" == "macos" || "${{ github.event.inputs.target }}" == "both" ]]; then
+            if echo "$assets" | grep -q "PVIHK-${{ env.VERSION }}.dmg"; then
+              echo "❌ macOS-Datei ist bereits im Release."
+              found=true
+            fi
+          fi
+
+          if [ "$found" = true ]; then
+            echo "🚫 Abbruch: Diese Plattform-Dateien wurden bereits veröffentlicht. Bitte Versionsnummer erhöhen oder Zielplattform wechseln."
+            exit 1
+          else
+            echo "✅ Keine Konflikte – Upload wird fortgesetzt."
+          fi
+
+      - name: Erzeuge oder aktualisiere Release mit vorhandenen Dateien
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ env.VERSION }}
           name: Release v${{ env.VERSION }}
-          body: macOS Version ${{ env.VERSION }}
+          body: |
+            Automatisch generierter Release für Version ${{ env.VERSION }}.
+            Enthält nur die verfügbaren Plattform-Dateien.
           files: |
-            PVIHK-${{ env.VERSION }}.dmg
-            release/README_mac.txt
-
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            dist/pvihk.exe
+            dist/PVIHK-${{ env.VERSION }}_setup.exe
+            dist/PVIHK-${{ env.VERSION }}.dmg
+            dist/README_windows.txt
+            dist/README_mac.txt
+  

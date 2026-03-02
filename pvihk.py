@@ -17,10 +17,15 @@ from datetime import datetime
 from fpdf import FPDF
 
 from pathlib import Path
-from config import (
-    APP_NAME, COPYRIGHT,TITLEVERSION,
-    VERSION, DATE, WINDOWTITLE
-)
+
+from versioning import get_app_metadata
+meta = get_app_metadata(increment=True)
+VERSION = meta["VERSION"]
+DATE = meta["DATE"]
+TITLEVERSION = meta["TITLEVERSION"]
+WINDOWTITLE = meta["WINDOWTITLE"]
+APPNAME = meta["APPNAME"]
+COPYRIGHT = meta["COPYRIGHT"]
 
 from  MainWindow import Ui_MainWindow
 from preferencesDialog import PreferencesDialog
@@ -81,7 +86,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
     anzahl_korrektoren = eingabedaten.get("anzahl_korrektoren_pro_klausur", 2)
 
     # --- Kandidaten trennen: Präsenzprüfung vs. reine Klausurkorrektur (X_-Prefix) ---
-    praesenz_klausuren   = [f"K_{i}" for i, name in klausurnamen.items() if not name.startswith("X_")]
+    praesenz_klausuren    = [f"K_{i}" for i, name in klausurnamen.items() if not name.startswith("X_")]
     nur_klausur_klausuren = [f"K_{i}" for i, name in klausurnamen.items() if     name.startswith("X_")]
     alle_klausuren = praesenz_klausuren + nur_klausur_klausuren
 
@@ -125,7 +130,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         prob += belastung[p] - mittlere_belastung <= abweichung[p]
         prob += mittlere_belastung - belastung[p] <= abweichung[p]
 
-    # Gewichtung: Gleichverteilung / Anwesenheit
+    # Hier erfolgt die Gewichtung: Gleichverteilung / Anwesenheit
     prob += (
         1.0 * pulp.lpSum(abweichung[p] for p in korrektornamen) +
         0.1 * pulp.lpSum(anwesenheit[p, t] for p in korrektornamen for t in [0, 1])
@@ -231,14 +236,14 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         pdf.set_font("Arial", "B", 10)
         pdf.cell(0, 6, f"Zeitplan: {datum}", ln=True)
         pdf.set_fill_color(200, 200, 220)
-        pdf.cell(22, 6, "Zeit",       border=1, fill=True)
-        pdf.cell(78, 6, "Prüfung",    border=1, fill=True)
-        pdf.cell(85, 6, "Korrektoren",border=1, ln=True, fill=True)
+        pdf.cell(22, 6, "Zeit",        border=1, fill=True)
+        pdf.cell(78, 6, "Prüfung",     border=1, fill=True)
+        pdf.cell(85, 6, "Korrektoren", border=1, ln=True, fill=True)
         pdf.set_font("Arial", size=9)
         for zeit, klausurname, pruefer in eintraege:
-            pdf.cell(22, 6, zeit,                    border=1)
-            pdf.cell(78, 6, klausurname,             border=1)
-            pdf.cell(85, 6, ", ".join(pruefer),      border=1, ln=True)
+            pdf.cell(22, 6, zeit,               border=1)
+            pdf.cell(78, 6, klausurname,         border=1)
+            pdf.cell(85, 6, ", ".join(pruefer),  border=1, ln=True)
         pdf.ln(3)
 
     # --- Abschnitt 2: Nur-Klausur-Korrekturen (X_-Kandidaten, kein Zeitplan) ---
@@ -263,7 +268,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 6, "Korrektorenübersicht mit Partnern", ln=True)
     pdf.set_font("Arial", "B", 9)
-    pdf.cell(60,  6, "Korrektor (gesamt)",  border=1)
+    pdf.cell(60,  6, "Korrektor (gesamt)",     border=1)
     pdf.cell(130, 6, "Verteilung auf Partner", border=1, ln=True)
     pdf.set_font("Arial", size=9)
 
@@ -299,7 +304,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         pdf.cell(0, 6, f"{sender} erhält:", ln=True)
         pdf.set_font("Arial", size=10)
         for k in klist:
-            name = klausurnamen[int(k.split('_')[1])]
+            name   = klausurnamen[int(k.split('_')[1])]
             marker = " *" if name.startswith("X_") else ""
             pdf.cell(0, 6, f"   - {name}{marker}", ln=True)
         pdf.set_font("Arial", "B", 10)
@@ -308,7 +313,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         pdf.cell(0, 6, f"{sender} -> {empfaenger}:", ln=True)
         pdf.set_font("Arial", size=10)
         for k in klist:
-            name = klausurnamen[int(k.split('_')[1])]
+            name   = klausurnamen[int(k.split('_')[1])]
             marker = " *" if name.startswith("X_") else ""
             pdf.cell(0, 6, f"   - {name}{marker}", ln=True)
         pdf.set_font("Arial", "B", 10)
@@ -1030,7 +1035,7 @@ class MainWindow(QMainWindow,Ui_MainWindow):
         QMessageBox.about(
             self,
             WINDOWTITLE,
-            f"{APP_NAME}\nPrüfungs- und Korrektorenverteilung\n"
+            f"{APPNAME}\nPrüfungs- und Korrektorenverteilung\n"
             f"{VERSION}\nvom {DATE}\n{COPYRIGHT}"
         )
 
