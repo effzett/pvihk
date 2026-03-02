@@ -11,6 +11,69 @@ from PySide6.QtWidgets import (
     QHeaderView, QTableWidgetItem, QFileDialog, QMessageBox, QListWidget
 )
 
+# --- CBC / PuLP packaging helper ---
+def ensure_cbc_on_path():
+    """Ensure PuLP can find bundled CBC (cbc/cbc.exe) in packaged builds.
+
+    PuLP's PULP_CBC_CMD locates 'cbc' via PATH. In PyInstaller --onefile builds, bundled
+    binaries are extracted to sys._MEIPASS at runtime; we prepend likely locations to PATH.
+    """
+    import os
+    import sys
+
+    if not getattr(sys, "frozen", False):
+        return
+
+    candidates = []
+    base_meipass = getattr(sys, "_MEIPASS", None)
+    if base_meipass:
+        candidates.append(base_meipass)
+
+    # directory of the running executable (.app/Contents/MacOS on macOS)
+    try:
+        candidates.append(os.path.dirname(sys.executable))
+    except Exception:
+        pass
+
+    # prepend candidates to PATH
+    path = os.environ.get("PATH", "")
+    parts = [p for p in path.split(os.pathsep) if p]
+    new_parts = []
+    for d in candidates:
+        if d and d not in new_parts:
+            new_parts.append(d)
+    for p in parts:
+        if p not in new_parts:
+            new_parts.append(p)
+    os.environ["PATH"] = os.pathsep.join(new_parts)
+
+    # best-effort: make cbc executable on macOS/Linux and remove quarantine on macOS
+    try:
+        for d in candidates:
+            for name in ("cbc", "cbc.exe"):
+                cbc_path = os.path.join(d, name)
+                if os.path.exists(cbc_path):
+                    if os.name != "nt":
+                        try:
+                            os.chmod(cbc_path, 0o755)
+                        except Exception:
+                            pass
+                    if sys.platform == "darwin":
+                        try:
+                            import subprocess
+                            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc_path],
+                                           check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        except Exception:
+                            pass
+                    return
+    except Exception:
+        pass
+
+# Must run early, before any PuLP solver availability checks / solves
+ensure_cbc_on_path()
+# --- end helper ---
+
+
 import pulp
 from collections import defaultdict
 from datetime import datetime
@@ -44,67 +107,6 @@ if getattr(sys, 'frozen', False):
 else:
     # Normal als .py Script
     BASIS_DIR = os.path.dirname(os.path.abspath(__file__))
-
-
-# --- CBC / PuLP packaging helper ---
-def ensure_cbc_on_path():
-    """Ensure PuLP can find CBC in packaged builds.
-
-    PuLP's PULP_CBC_CMD locates 'cbc' via PATH. In PyInstaller --onefile builds, bundled
-    binaries are extracted to sys._MEIPASS at runtime. We prepend likely locations to PATH
-    and (best-effort) fix execute/quarantine flags on macOS.
-    """
-    if not getattr(sys, "frozen", False):
-        return
-
-    candidates_dirs = []
-
-    base_meipass = getattr(sys, "_MEIPASS", None)
-    if base_meipass:
-        candidates_dirs.append(base_meipass)
-
-    try:
-        candidates_dirs.append(os.path.dirname(sys.executable))
-    except Exception:
-        pass
-
-    # Prepend candidates to PATH (de-dup)
-    path = os.environ.get("PATH", "")
-    parts = [p for p in path.split(os.pathsep) if p]
-    new_parts = []
-    for d in candidates_dirs:
-        if d and d not in new_parts:
-            new_parts.append(d)
-    for p in parts:
-        if p not in new_parts:
-            new_parts.append(p)
-    os.environ["PATH"] = os.pathsep.join(new_parts)
-
-    # Best-effort: make the extracted/bundled binary executable and remove quarantine on macOS
-    try:
-        for d in candidates_dirs:
-            for name in ("cbc", "cbc.exe"):
-                cbc_path = os.path.join(d, name)
-                if os.path.exists(cbc_path):
-                    if os.name != "nt":
-                        try:
-                            os.chmod(cbc_path, 0o755)
-                        except Exception:
-                            pass
-                    if sys.platform == "darwin":
-                        try:
-                            import subprocess
-                            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc_path],
-                                           check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        except Exception:
-                            pass
-                    return
-    except Exception:
-        pass
-
-# Run early (no-op outside packaged builds)
-ensure_cbc_on_path()
-# --- end helper ---
 
 # Für Multithreading
 # Signale aus dem Optimierungsblock

@@ -1,16 +1,18 @@
 name: Build PVIHK (plattformselektiv)
-true:
+
+on:
   workflow_dispatch:
     inputs:
       target:
-        description: Welche Plattform soll gebaut werden?
+        description: 'Welche Plattform soll gebaut werden?'
         required: true
-        default: windows
+        default: 'windows'
         type: choice
         options:
-        - windows
-        - macos
-        - both
+          - windows
+          - macos
+          - both
+
 jobs:
   init:
     name: Generiere Buildnummer und Version
@@ -19,258 +21,318 @@ jobs:
       build_number: ${{ steps.get_number.outputs.build_number }}
       version: ${{ steps.get_version.outputs.version }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Lese build_number.txt
-      id: get_number
-      run: echo "build_number=$(cat build_number.txt)" >> $GITHUB_OUTPUT
-    - name: Lese Version aus versioning.py
-      id: get_version
-      run: 'echo "version=$(PYTHONPATH=. python3 -c ''from versioning import get_app_metadata;
-        print(get_app_metadata(increment=False)["VERSION"])'')" >> $GITHUB_OUTPUT
+      - name: Checkout
+        uses: actions/checkout@v4
 
-        '
-    - name: Brich ab, wenn Plattform für Release-Tag schon veröffentlicht wurde
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: "tag=\"v${{ steps.get_version.outputs.version }}\"\ntarget=\"${{ github.event.inputs.target\
-        \ }}\"\n\necho \"\U0001F50D Überprüfe Release-Tag: $tag für Zielplattform:\
-        \ $target\"\n\nif ! gh release view \"$tag\" > /dev/null 2>&1; then\n  echo\
-        \ \"✅ Release $tag existiert noch nicht – alles ok.\"\n  exit 0\nfi\n\necho\
-        \ \"ℹ️ Release $tag existiert bereits.\"\n\nif [[ \"$target\" == \"windows\"\
-        \ || \"$target\" == \"both\" ]]; then\n  if gh release view \"$tag\" | grep\
-        \ -q 'pvihk.exe'; then\n    echo \"❌ Windows-Dateien wurden bereits veröffentlicht.\"\
-        \n    exit 1\n  fi\nfi\n\nif [[ \"$target\" == \"macos\" || \"$target\" ==\
-        \ \"both\" ]]; then\n  if gh release view \"$tag\" | grep -q '.dmg'; then\n\
-        \    echo \"❌ macOS-Dateien wurden bereits veröffentlicht.\"\n    exit 1\n\
-        \  fi\nfi\n\necho \"✅ Gewählte Plattform wurde noch nicht veröffentlicht –\
-        \ weiter geht's.\"\n"
+      - name: Lese build_number.txt
+        id: get_number
+        run: echo "build_number=$(cat build_number.txt)" >> $GITHUB_OUTPUT
+
+      - name: Lese Version aus versioning.py
+        id: get_version
+        run: |
+          echo "version=$(PYTHONPATH=. python3 -c 'from versioning import get_app_metadata; print(get_app_metadata(increment=False)["VERSION"])')" >> $GITHUB_OUTPUT
+
+      - name: Brich ab, wenn Plattform für Release-Tag schon veröffentlicht wurde
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="v${{ steps.get_version.outputs.version }}"
+          target="${{ github.event.inputs.target }}"
+
+          echo "🔍 Überprüfe Release-Tag: $tag für Zielplattform: $target"
+
+          if ! gh release view "$tag" > /dev/null 2>&1; then
+            echo "✅ Release $tag existiert noch nicht – alles ok."
+            exit 0
+          fi
+
+          echo "ℹ️ Release $tag existiert bereits."
+
+          if [[ "$target" == "windows" || "$target" == "both" ]]; then
+            if gh release view "$tag" | grep -q 'pvihk.exe'; then
+              echo "❌ Windows-Dateien wurden bereits veröffentlicht."
+              exit 1
+            fi
+          fi
+
+          if [[ "$target" == "macos" || "$target" == "both" ]]; then
+            if gh release view "$tag" | grep -q '.dmg'; then
+              echo "❌ macOS-Dateien wurden bereits veröffentlicht."
+              exit 1
+            fi
+          fi
+
+          echo "✅ Gewählte Plattform wurde noch nicht veröffentlicht – weiter geht's."
+
+
+
   build-windows:
     name: Windows-Build
     runs-on: windows-latest
     needs: init
-    if: ${{ github.event.inputs.target == 'windows' || github.event.inputs.target
-      == 'both' }}
+    if: ${{ github.event.inputs.target == 'windows' || github.event.inputs.target == 'both' }}
     env:
       BUILD_NUMBER: ${{ needs.init.outputs.build_number }}
       VERSION: ${{ needs.init.outputs.version }}
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    - name: Set up Miniconda
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        environment-file: environment-windows.yml
-        activate-environment: pvihk
-        auto-update-conda: true
-        channels: conda-forge,defaults
-    - name: Install pip-only packages
-      run: 'pip install pyinstaller fpdf==1.7.2
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-        '
-    - name: Find pulp path
-      id: find_pulp
-      shell: bash -l {0}
-      run: 'PULP_PATH=$(python -c "import pulp, os; print(os.path.dirname(pulp.__file__))")
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment-windows.yml
+          activate-environment: pvihk
+          auto-update-conda: true
+          channels: conda-forge,defaults
 
-        echo "pulp-path=$PULP_PATH" >> $GITHUB_OUTPUT
+      - name: Install pip-only packages
+        shell: bash -l {0}
+        run: |
+          pip install pyinstaller fpdf==1.7.2
 
-        '
-    - name: Read build number
-      id: read_build
-      shell: bash
-      run: 'echo "BUILD_NUMBER=$(cat build_number.txt)" >> $GITHUB_ENV
+      - name: Find pulp path
+        id: find_pulp
+        shell: bash -l {0}
+        run: |
+          PULP_PATH=$(python -c "import pulp, os; print(os.path.dirname(pulp.__file__))")
+          echo "pulp-path=$PULP_PATH" >> $GITHUB_OUTPUT
 
-        '
-    - name: Build with PyInstaller
-      shell: bash -l {0}
-      run: "pyinstaller \\\n  --clean \\\n  --noconfirm \\\n  --onefile \\\n  --windowed\
-        \ \\\n  --log-level=DEBUG \\\n  --icon=assets/PVIHK.ico \\\n  --hidden-import=pulp\
-        \ \\\n  --add-data \"${{ steps.find_pulp.outputs.pulp-path }};pulp\" \\\n\
-        \  --add-data \"build_number.txt;.\" \\\n  --add-data \"build_date.txt;.\"\
-        \ \\\n  --add-binary \"assets/cbc.exe;.\" \\\n  --collect-submodules PySide6\
-        \ \\\n  --collect-data PySide6 \\\n  --distpath dist \\\n  pvihk.py\n"
-    - name: Debug LICENSE exist
-      run: dir assets\LICENSE.txt
-    - name: Ensure dist directory exists
-      shell: pwsh
-      run: "if (-not (Test-Path \"dist\")) {\n  New-Item -ItemType Directory -Path\
-        \ \"dist\"\n}\n"
-    - name: Run NSIS
-      run: makensis /DVERSION=${{ needs.init.outputs.version }} installer/pvihk_installer.nsi
-    - name: Check if EXEs were built
-      shell: pwsh
-      run: "$version = $env:VERSION\n$setupPath = \"dist/PVIHK-$version`_setup.exe\"\
-        \nif (!(Test-Path \"dist/pvihk.exe\")) {\n  throw \"pvihk.exe not found\"\n\
-        }\nif (!(Test-Path $setupPath)) {\n  throw \"$setupPath not found\"\n}\n"
-    - name: Artefakte hochladen (Windows)
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-artifacts
-        path: 'dist/pvihk.exe
+      - name: Read build number
+        id: read_build
+        shell: bash
+        run: |
+          echo "BUILD_NUMBER=$(cat build_number.txt)" >> $GITHUB_ENV
 
-          dist/PVIHK-${{ env.VERSION }}_setup.exe
+      - name: Build with PyInstaller
+        shell: bash -l {0}
+        run: |
+          pyinstaller \
+            --clean \
+            --noconfirm \
+            --onefile \
+            --windowed \
+            --log-level=DEBUG \
+            --icon=assets/PVIHK.ico \
+            --hidden-import=pulp \
+            --add-data "${{ steps.find_pulp.outputs.pulp-path }};pulp" \
+            --add-data "build_number.txt;." \
+            --add-data "build_date.txt;." \
+            --add-binary "assets/cbc.exe;." \
+            --collect-submodules PySide6 \
+            --collect-data PySide6 \
+            --distpath dist \
+            pvihk.py
 
-          release/README_windows.txt
+      - name: Debug LICENSE exist
+        run: dir assets\LICENSE.txt
 
-          '
+      - name: Ensure dist directory exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist")) {
+            New-Item -ItemType Directory -Path "dist"
+          }
+
+      - name: Run NSIS
+        run: makensis /DVERSION=${{ needs.init.outputs.version }} installer/pvihk_installer.nsi
+
+      - name: Check if EXEs were built
+        shell: pwsh
+        run: |
+          $version = $env:VERSION
+          $setupPath = "dist/PVIHK-$version`_setup.exe"
+          if (!(Test-Path "dist/pvihk.exe")) {
+            throw "pvihk.exe not found"
+          }
+          if (!(Test-Path $setupPath)) {
+            throw "$setupPath not found"
+          }
+      - name: Artefakte hochladen (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            dist/pvihk.exe
+            dist/PVIHK-${{ env.VERSION }}_setup.exe
+            release/README_windows.txt
+
+
   build-macos:
     name: macOS-Build
     runs-on: macos-latest
     needs: init
-    if: ${{ github.event.inputs.target == 'macos' || github.event.inputs.target ==
-      'both' }}
+    if: ${{ github.event.inputs.target == 'macos' || github.event.inputs.target == 'both' }}
     env:
       BUILD_NUMBER: ${{ needs.init.outputs.build_number }}
       VERSION: ${{ needs.init.outputs.version }}
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    - name: Set up Miniconda
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        environment-file: environment.yml
-        activate-environment: pvihk
-        auto-update-conda: true
-        channels: conda-forge,defaults
-    - name: Install pip-only packages
-      run: 'pip install fpdf==1.7.2 pyinstaller
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-        '
-      shell: bash -l {0}
-    - name: Read build number
-      id: read_build
-      shell: bash
-      run: echo "BUILD_NUMBER=$(cat build_number.txt)" >> $GITHUB_ENV
-    - name: Find CBC path
-      shell: bash -l {0}
-      run: "CBC_PATH=\"$(python -c \"import shutil; p=shutil.which('cbc'); print(p\
-        \ or '')\")\"\necho \"=== CBC_PATH: $CBC_PATH ===\"\nif [ -z \"$CBC_PATH\"\
-        \ ]; then\n  echo \"ERROR: cbc not found in PATH (conda env not active or\
-        \ coin-or-cbc missing)\"\n  echo \"CONDA_PREFIX=$CONDA_PREFIX\"\n  python\
-        \ -c \"import os; print('PATH=', os.environ.get('PATH',''))\"\n  exit 1\n\
-        fi\nfile \"$CBC_PATH\" || true\n\"$CBC_PATH\" --version || true\necho \"CBC_PATH=$CBC_PATH\"\
-        \ >> $GITHUB_ENV\n"
-    - name: Build macOS app with PyInstaller
-      shell: bash -l {0}
-      run: "pyinstaller \\\n  --clean \\\n  --noconfirm \\\n  --onefile \\\n  --windowed\
-        \ \\\n  --icon=assets/PVIHK.icns \\\n  --hidden-import=pulp \\\n  --add-data\
-        \ \"$(python -c 'import pulp, os; print(os.path.dirname(pulp.__file__))'):pulp\"\
-        \ \\\n  --add-data \"build_number.txt:.\" \\\n  --add-data \"build_date.txt:.\"\
-        \ \\\n            --add-binary \"$CBC_PATH:.\" \\\n  pvihk.py\n"
-    - name: Verify CBC bundling note (macOS)
-      shell: bash -l {0}
-      run: 'echo "NOTE: With --onefile, added binaries may be embedded and extracted
-        at runtime to _MEIPASS."
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment.yml
+          activate-environment: pvihk
+          auto-update-conda: true
+          channels: conda-forge,defaults
 
-        echo "Listing dist/pvihk.app/Contents/MacOS:"
+      - name: Install pip-only packages
+        shell: bash -l {0}
+        run: |
+          pip install fpdf==1.7.2 pyinstaller
 
-        ls -la dist/pvihk.app/Contents/MacOS || true
+      - name: Read build number
+        id: read_build
+        shell: bash
+        run: echo "BUILD_NUMBER=$(cat build_number.txt)" >> $GITHUB_ENV
 
-        '
-    - name: Prepare content for DMG
-      run: 'rm -rf dmg_content && mkdir dmg_content
+- name: Find CBC path
+  shell: bash -l {0}
+  run: |
+    CBC_PATH="$(python -c "import shutil; print(shutil.which('cbc') or '')")"
+    echo "=== CBC_PATH: $CBC_PATH ==="
+    if [ -z "$CBC_PATH" ]; then
+      echo "ERROR: cbc not found in PATH (conda env not active or coin-or-cbc missing)"
+      echo "CONDA_PREFIX=$CONDA_PREFIX"
+      python -c "import os; print('PATH=', os.environ.get('PATH',''))"
+      exit 1
+    fi
+    file "$CBC_PATH" || true
+    "$CBC_PATH" --version || true
+    echo "CBC_PATH=$CBC_PATH" >> $GITHUB_ENV
 
-        cp -R dist/pvihk.app dmg_content/
+      - name: Build macOS app with PyInstaller
+        shell: bash -l {0}
+        run: |
+          pyinstaller \
+            --clean \
+            --noconfirm \
+            --onefile \
+            --windowed \
+            --icon=assets/PVIHK.icns \
+            --hidden-import=pulp \
+            --add-data "$(python -c 'import pulp, os; print(os.path.dirname(pulp.__file__))'):pulp" \
+            --add-data "build_number.txt:." \
+            --add-data "build_date.txt:." \
+            --add-binary "$CBC_PATH:." \
+            pvihk.py
 
-        ln -s /Applications dmg_content/Applications
+      - name: Prepare content for DMG
+        run: |
+          rm -rf dmg_content && mkdir dmg_content
+          cp -R dist/pvihk.app dmg_content/
+          ln -s /Applications dmg_content/Applications
 
-        '
-    - name: Install create-dmg
-      run: brew install create-dmg
-    - name: Cleanup dmg_content
-      run: 'rm -f dmg_content/*.icns
+      - name: Install create-dmg
+        run: brew install create-dmg
 
-        rm -f dmg_content/.DS_Store
+      - name: Cleanup dmg_content
+        run: |
+          rm -f dmg_content/*.icns
+          rm -f dmg_content/.DS_Store
 
-        '
-    - name: Create DMG without background
-      run: "create-dmg \\\n  --volname \"PVIHK\" \\\n  --volicon \"assets/disc.icns\"\
-        \ \\\n  --window-pos 200 120 \\\n  --window-size 500 300 \\\n  --icon-size\
-        \ 100 \\\n  --icon \"pvihk.app\" 125 150 \\\n  --icon \"Applications\" 375\
-        \ 150 \\\n  \"PVIHK-${{ env.VERSION }}.dmg\" \\\n  dmg_content/\n"
-    - name: Artefakte hochladen (macOS)
-      uses: actions/upload-artifact@v4
-      with:
-        name: macos-artifacts
-        path: 'PVIHK-${{ env.VERSION }}.dmg
+      - name: Create DMG without background
+        run: |
+          create-dmg \
+            --volname "PVIHK" \
+            --volicon "assets/disc.icns" \
+            --window-pos 200 120 \
+            --window-size 500 300 \
+            --icon-size 100 \
+            --icon "pvihk.app" 125 150 \
+            --icon "Applications" 375 150 \
+            "PVIHK-${{ env.VERSION }}.dmg" \
+            dmg_content/
 
-          release/README_mac.txt
+      - name: Artefakte hochladen (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            PVIHK-${{ env.VERSION }}.dmg
+            release/README_mac.txt
 
-          '
   release:
     name: Release-Erstellung (zentral)
     runs-on: ubuntu-latest
-    needs:
-    - init
-    - build-windows
-    - build-macos
+    needs: [ init, build-windows, build-macos ]
     if: ${{ always() }}
     env:
       VERSION: ${{ needs.init.outputs.version }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-    - name: Lade Release-Dateien herunter (aus anderen Jobs)
-      uses: actions/download-artifact@v4
-      with:
-        path: dist
-    - name: Entpacke Artefakte rekursiv
-      run: 'find dist/windows-artifacts -type f -exec mv {} dist/ \; 2>/dev/null ||
-        true
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-        find dist/macos-artifacts -type f -exec mv {} dist/ \; 2>/dev/null || true
+      - name: Lade Release-Dateien herunter (aus anderen Jobs)
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
 
-        '
-    - name: Zeige Inhalt von dist (Debug)
-      run: 'echo ">>> Dateien in dist/"
+      - name: Entpacke Artefakte rekursiv
+        run: |
+          find dist/windows-artifacts -type f -exec mv {} dist/ \; 2>/dev/null || true
+          find dist/macos-artifacts -type f -exec mv {} dist/ \; 2>/dev/null || true
 
-        find dist -type f
+      - name: Zeige Inhalt von dist (Debug)
+        run: |
+          echo ">>> Dateien in dist/"
+          find dist -type f
 
-        '
-    - name: Zeige vorhandene Release-Assets (optional)
-      run: 'echo "🔎 Prüfe, ob Release v${{ env.VERSION }} bereits existiert:"
+      - name: Zeige vorhandene Release-Assets (optional)
+        run: |
+          echo "🔎 Prüfe, ob Release v${{ env.VERSION }} bereits existiert:"
+          gh release view "v${{ env.VERSION }}" --json assets -q '.assets[].name' || echo "ℹ️ Noch kein Release vorhanden – vermutlich erster Lauf."
 
-        gh release view "v${{ env.VERSION }}" --json assets -q ''.assets[].name''
-        || echo "ℹ️ Noch kein Release vorhanden – vermutlich erster Lauf."
+      - name: Abbruch, wenn Assets mit gleicher Version bereits vorhanden sind
+        run: |
+          echo "🔍 Überprüfe, ob Plattform-Dateien bereits hochgeladen wurden..."
+          assets=$(gh release view "v${{ env.VERSION }}" --json assets -q '.assets[].name' 2>/dev/null || echo "")
 
-        '
-    - name: Abbruch, wenn Assets mit gleicher Version bereits vorhanden sind
-      run: "echo \"\U0001F50D Überprüfe, ob Plattform-Dateien bereits hochgeladen\
-        \ wurden...\"\nassets=$(gh release view \"v${{ env.VERSION }}\" --json assets\
-        \ -q '.assets[].name' 2>/dev/null || echo \"\")\n\nfound=false\n\nif [[ \"\
-        ${{ github.event.inputs.target }}\" == \"windows\" || \"${{ github.event.inputs.target\
-        \ }}\" == \"both\" ]]; then\n  if echo \"$assets\" | grep -q \"pvihk.exe\"\
-        ; then\n    echo \"❌ Windows-Datei 'pvihk.exe' ist bereits im Release.\"\n\
-        \    found=true\n  fi\n  if echo \"$assets\" | grep -q \"PVIHK-${{ env.VERSION\
-        \ }}_setup.exe\"; then\n    echo \"❌ Windows-Installer ist bereits im Release.\"\
-        \n    found=true\n  fi\nfi\n\nif [[ \"${{ github.event.inputs.target }}\"\
-        \ == \"macos\" || \"${{ github.event.inputs.target }}\" == \"both\" ]]; then\n\
-        \  if echo \"$assets\" | grep -q \"PVIHK-${{ env.VERSION }}.dmg\"; then\n\
-        \    echo \"❌ macOS-Datei ist bereits im Release.\"\n    found=true\n  fi\n\
-        fi\n\nif [ \"$found\" = true ]; then\n  echo \"\U0001F6AB Abbruch: Diese Plattform-Dateien\
-        \ wurden bereits veröffentlicht. Bitte Versionsnummer erhöhen oder Zielplattform\
-        \ wechseln.\"\n  exit 1\nelse\n  echo \"✅ Keine Konflikte – Upload wird fortgesetzt.\"\
-        \nfi\n"
-    - name: Erzeuge oder aktualisiere Release mit vorhandenen Dateien
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ env.VERSION }}
-        name: Release v${{ env.VERSION }}
-        body: 'Automatisch generierter Release für Version ${{ env.VERSION }}.
+          found=false
 
-          Enthält nur die verfügbaren Plattform-Dateien.
+          if [[ "${{ github.event.inputs.target }}" == "windows" || "${{ github.event.inputs.target }}" == "both" ]]; then
+            if echo "$assets" | grep -q "pvihk.exe"; then
+              echo "❌ Windows-Datei 'pvihk.exe' ist bereits im Release."
+              found=true
+            fi
+            if echo "$assets" | grep -q "PVIHK-${{ env.VERSION }}_setup.exe"; then
+              echo "❌ Windows-Installer ist bereits im Release."
+              found=true
+            fi
+          fi
 
-          '
-        files: 'dist/pvihk.exe
+          if [[ "${{ github.event.inputs.target }}" == "macos" || "${{ github.event.inputs.target }}" == "both" ]]; then
+            if echo "$assets" | grep -q "PVIHK-${{ env.VERSION }}.dmg"; then
+              echo "❌ macOS-Datei ist bereits im Release."
+              found=true
+            fi
+          fi
 
-          dist/PVIHK-${{ env.VERSION }}_setup.exe
+          if [ "$found" = true ]; then
+            echo "🚫 Abbruch: Diese Plattform-Dateien wurden bereits veröffentlicht. Bitte Versionsnummer erhöhen oder Zielplattform wechseln."
+            exit 1
+          else
+            echo "✅ Keine Konflikte – Upload wird fortgesetzt."
+          fi
 
-          dist/PVIHK-${{ env.VERSION }}.dmg
-
-          dist/README_windows.txt
-
-          dist/README_mac.txt
-
-          '
+      - name: Erzeuge oder aktualisiere Release mit vorhandenen Dateien
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          body: |
+            Automatisch generierter Release für Version ${{ env.VERSION }}.
+            Enthält nur die verfügbaren Plattform-Dateien.
+          files: |
+            dist/pvihk.exe
+            dist/PVIHK-${{ env.VERSION }}_setup.exe
+            dist/PVIHK-${{ env.VERSION }}.dmg
+            dist/README_windows.txt
+            dist/README_mac.txt
+  
