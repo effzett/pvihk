@@ -79,6 +79,11 @@ PREFERENCES_FILE = Path.home() / ".preferences.json"
 if getattr(sys, 'frozen', False):
     # Gebündelt als EXE oder APP
     BASIS_DIR = os.path.dirname(sys.executable)
+    # CBC-Binary ausführbar machen (macOS verliert Permissions beim Bundling)
+    cbc_path = os.path.join(BASIS_DIR, 'cbc')
+    if os.path.exists(cbc_path):
+        os.chmod(cbc_path, 0o755)
+        os.environ['PATH'] = BASIS_DIR + os.pathsep + os.environ.get('PATH', '')
 else:
     # Normal als .py Script
     BASIS_DIR = os.path.dirname(os.path.abspath(__file__))
