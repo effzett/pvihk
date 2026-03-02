@@ -79,14 +79,12 @@ PREFERENCES_FILE = Path.home() / ".preferences.json"
 if getattr(sys, 'frozen', False):
     # Gebündelt als EXE oder APP
     BASIS_DIR = os.path.dirname(sys.executable)
-    # CBC-Binary ausführbar machen (macOS verliert Permissions beim Bundling)
-    cbc_path = os.path.join(BASIS_DIR, 'cbc')
-    if os.path.exists(cbc_path):
-        os.chmod(cbc_path, 0o755)
-        os.environ['PATH'] = BASIS_DIR + os.pathsep + os.environ.get('PATH', '')
 else:
     # Normal als .py Script
     BASIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# CBC-Binary auf macOS ausführbar machen (Permissions gehen beim Bundling verloren)
+ensure_cbc_on_path()
 
 # Für Multithreading
 # Signale aus dem Optimierungsblock
@@ -207,8 +205,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
 
     import time
     start_time = time.time()
-    # Im gebündelten Zustand (--onefile) CBC-Pfad explizit übergeben,
-    # da PuLP den PATH nicht zuverlässig durchsucht
+    # Im gebündelten Zustand CBC-Pfad explizit übergeben
     if getattr(sys, 'frozen', False):
         solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True, path=get_cbc_path())
     else:

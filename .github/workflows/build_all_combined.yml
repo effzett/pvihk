@@ -198,9 +198,14 @@ jobs:
       - name: Find CBC path
         shell: bash -l {0}
         run: |
-          # PuLP kennt den Pfad zu seinem eigenen CBC-Binary
-          CBC_PATH=$(python -c "import pulp; print(pulp.PULP_CBC_CMD().path)")
-          echo "=== PuLP CBC-Pfad: $CBC_PATH ==="
+          # Absoluten Pfad zum echten CBC-Binary ermitteln
+          CBC_PATH=$(python -c "
+import shutil, pulp, os
+raw = pulp.PULP_CBC_CMD().path
+resolved = shutil.which(raw) or raw
+print(os.path.realpath(resolved))
+")
+          echo "=== CBC-Pfad: $CBC_PATH ==="
           file "$CBC_PATH"
           "$CBC_PATH" --version
           echo "CBC_PATH=$CBC_PATH" >> $GITHUB_ENV
