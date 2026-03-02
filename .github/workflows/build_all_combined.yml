@@ -137,7 +137,11 @@ jobs:
       - name: Install NSIS
         run: choco install nsis -y
       - name: Run NSIS
-        run: makensis /DVERSION=${{ needs.init.outputs.version }} installer/pvihk_installer.nsi
+        shell: pwsh
+        run: |
+          $exe = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (!(Test-Path $exe)) { throw "makensis.exe not found at $exe" }
+          & $exe /DVERSION=${{ needs.init.outputs.version }} installer/pvihk_installer.nsi
 
       - name: Check if EXEs were built
         shell: pwsh
