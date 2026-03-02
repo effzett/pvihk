@@ -1,41 +1,3 @@
-
-
-import sys
-import os
-
-def get_cbc_path():
-    if getattr(sys, "frozen", False):
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.dirname(__file__)
-    return os.path.join(base_path, "cbc")
-
-
-
-def ensure_cbc_on_path():
-    """Ensure bundled 'cbc' is present and executable when running from a PyInstaller bundle."""
-    if getattr(sys, "frozen", False):
-        base_path = sys._MEIPASS
-        cbc = os.path.join(base_path, "cbc")
-
-        # If the binary was bundled, make sure it is executable (macOS can lose exec bits after packaging).
-        try:
-            if os.path.exists(cbc):
-                os.chmod(cbc, 0o755)
-        except Exception:
-            pass
-
-        # Remove quarantine attribute if present (best-effort).
-        try:
-            import subprocess
-            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-
-        # Put extraction directory first in PATH so PuLP finds 'cbc' without needing a path= argument.
-        os.environ["PATH"] = base_path + os.pathsep + os.environ.get("PATH", "")
-
-
 import sys
 import os
 import platform
@@ -83,8 +45,66 @@ else:
     # Normal als .py Script
     BASIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# CBC-Binary auf macOS ausführbar machen (Permissions gehen beim Bundling verloren)
+
+# --- CBC / PuLP packaging helper ---
+def ensure_cbc_on_path():
+    """Ensure PuLP can find CBC in packaged builds.
+
+    PuLP's PULP_CBC_CMD locates 'cbc' via PATH. In PyInstaller --onefile builds, bundled
+    binaries are extracted to sys._MEIPASS at runtime. We prepend likely locations to PATH
+    and (best-effort) fix execute/quarantine flags on macOS.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+
+    candidates_dirs = []
+
+    base_meipass = getattr(sys, "_MEIPASS", None)
+    if base_meipass:
+        candidates_dirs.append(base_meipass)
+
+    try:
+        candidates_dirs.append(os.path.dirname(sys.executable))
+    except Exception:
+        pass
+
+    # Prepend candidates to PATH (de-dup)
+    path = os.environ.get("PATH", "")
+    parts = [p for p in path.split(os.pathsep) if p]
+    new_parts = []
+    for d in candidates_dirs:
+        if d and d not in new_parts:
+            new_parts.append(d)
+    for p in parts:
+        if p not in new_parts:
+            new_parts.append(p)
+    os.environ["PATH"] = os.pathsep.join(new_parts)
+
+    # Best-effort: make the extracted/bundled binary executable and remove quarantine on macOS
+    try:
+        for d in candidates_dirs:
+            for name in ("cbc", "cbc.exe"):
+                cbc_path = os.path.join(d, name)
+                if os.path.exists(cbc_path):
+                    if os.name != "nt":
+                        try:
+                            os.chmod(cbc_path, 0o755)
+                        except Exception:
+                            pass
+                    if sys.platform == "darwin":
+                        try:
+                            import subprocess
+                            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc_path],
+                                           check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        except Exception:
+                            pass
+                    return
+    except Exception:
+        pass
+
+# Run early (no-op outside packaged builds)
 ensure_cbc_on_path()
+# --- end helper ---
 
 # Für Multithreading
 # Signale aus dem Optimierungsblock
@@ -205,12 +225,7 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
 
     import time
     start_time = time.time()
-    # Im gebündelten Zustand CBC-Pfad explizit übergeben
-    if getattr(sys, 'frozen', False):
-        solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True, path=get_cbc_path())
-    else:
-        solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True)
-    prob.solve(solver)
+    prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
     end_time = time.time()
 
     solver_status = pulp.LpStatus[prob.status]
