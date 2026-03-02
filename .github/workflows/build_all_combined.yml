@@ -199,12 +199,7 @@ jobs:
         shell: bash -l {0}
         run: |
           # Absoluten Pfad zum echten CBC-Binary ermitteln
-          CBC_PATH=$(python -c "
-import shutil, pulp, os
-raw = pulp.PULP_CBC_CMD().path
-resolved = shutil.which(raw) or raw
-print(os.path.realpath(resolved))
-")
+          CBC_PATH=$(python -c "import shutil, pulp, os; raw = pulp.PULP_CBC_CMD().path; resolved = shutil.which(raw) or raw; print(os.path.realpath(resolved))")
           echo "=== CBC-Pfad: $CBC_PATH ==="
           file "$CBC_PATH"
           "$CBC_PATH" --version
@@ -225,11 +220,6 @@ print(os.path.realpath(resolved))
             --add-data "build_date.txt:." \
             --add-binary "$CBC_PATH:." \
             pvihk.py
-
-      - name: Fix CBC permissions in .app bundle
-        run: |
-          chmod +x dist/pvihk.app/Contents/MacOS/cbc
-          echo "✅ CBC permissions fixed: $(ls -la dist/pvihk.app/Contents/MacOS/cbc)"
 
       - name: Prepare content for DMG
         run: |
