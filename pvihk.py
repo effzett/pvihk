@@ -13,10 +13,26 @@ def get_cbc_path():
 
 
 def ensure_cbc_on_path():
-    """Ensure the bundled 'cbc' executable can be found by PuLP when frozen (PyInstaller --onefile)."""
+    """Ensure bundled 'cbc' is present and executable when running from a PyInstaller bundle."""
     if getattr(sys, "frozen", False):
         base_path = sys._MEIPASS
-        # Put the extraction directory first in PATH so PuLP finds 'cbc' without needing a path= argument.
+        cbc = os.path.join(base_path, "cbc")
+
+        # If the binary was bundled, make sure it is executable (macOS can lose exec bits after packaging).
+        try:
+            if os.path.exists(cbc):
+                os.chmod(cbc, 0o755)
+        except Exception:
+            pass
+
+        # Remove quarantine attribute if present (best-effort).
+        try:
+            import subprocess
+            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        # Put extraction directory first in PATH so PuLP finds 'cbc' without needing a path= argument.
         os.environ["PATH"] = base_path + os.pathsep + os.environ.get("PATH", "")
 
 
