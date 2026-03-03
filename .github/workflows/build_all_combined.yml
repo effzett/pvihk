@@ -103,12 +103,12 @@ jobs:
         id: find_cbc_win
         shell: 'bash -l {0}'
         run: |
-          CBC_PATH=$(python -c "import pulp; from pathlib import Path; p=Path(pulp.__file__).parent; cands=list(p.rglob('solverdir/cbc/**/cbc*.exe')); print(cands[0] if cands else '')")
+          CBC_PATH=$(python -c "import pulp, os; from pathlib import Path; p=Path(pulp.__file__).parent; cbc=p/'solverdir'/'cbc'/'win'/'64'/'cbc.exe'; print(cbc if cbc.exists() else '')")
           echo "cbc-path=$CBC_PATH" >> $GITHUB_OUTPUT
           echo "CBC_PATH=$CBC_PATH" >> $GITHUB_ENV
           echo "CBC_PATH=$CBC_PATH"
           if [ -z "$CBC_PATH" ]; then
-            echo "ERROR: PuLP-bundled cbc.exe not found under pulp/solverdir"
+            echo "ERROR: win/64 cbc.exe not found in PuLP solverdir"
             exit 1
           fi
 
