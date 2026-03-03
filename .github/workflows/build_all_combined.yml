@@ -208,6 +208,14 @@ jobs:
         run: |
           pip install fpdf==1.7.2 pyinstaller
 
+      - name: Force pip wheel for PuLP (macOS)
+        shell: 'bash -l {0}'
+        run: |
+          # Conda build of PuLP on macOS (arm64) may not include solverdir/cbc.
+          # The pip wheel normally ships solverdir/cbc/osx/**/cbc, which we can bundle.
+          pip install --upgrade --force-reinstall --no-deps pulp==2.8.0
+          python -c "import pulp, pathlib; p=pathlib.Path(pulp.__file__).parent; print('pulp=', p); print('osx cbc=', list(p.rglob('solverdir/cbc/osx/**/cbc')))"
+
       - name: Read build number
         id: read_build
         shell: bash
