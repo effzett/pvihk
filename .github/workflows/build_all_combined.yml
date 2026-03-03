@@ -88,13 +88,12 @@ jobs:
           channels: conda-forge,defaults
 
       - name: Install pip-only packages
-        shell: bash -l {0}
         run: |
           pip install pyinstaller fpdf==1.7.2
 
       - name: Find pulp path
         id: find_pulp
-        shell: bash -l {0}
+        shell: 'bash -l {0}'
         run: |
           PULP_PATH=$(python -c "import pulp, os; print(os.path.dirname(pulp.__file__))")
           echo "pulp-path=$PULP_PATH" >> $GITHUB_OUTPUT
@@ -106,7 +105,7 @@ jobs:
           echo "BUILD_NUMBER=$(cat build_number.txt)" >> $GITHUB_ENV
 
       - name: Build with PyInstaller
-        shell: bash -l {0}
+        shell: 'bash -l {0}'
         run: |
           pyinstaller \
             --clean \
@@ -181,7 +180,6 @@ jobs:
           channels: conda-forge,defaults
 
       - name: Install pip-only packages
-        shell: bash -l {0}
         run: |
           pip install fpdf==1.7.2 pyinstaller
 
@@ -190,23 +188,8 @@ jobs:
         shell: bash
         run: echo "BUILD_NUMBER=$(cat build_number.txt)" >> $GITHUB_ENV
 
-- name: Find CBC path
-  shell: bash -l {0}
-  run: |
-    CBC_PATH="$(python -c "import shutil; print(shutil.which('cbc') or '')")"
-    echo "=== CBC_PATH: $CBC_PATH ==="
-    if [ -z "$CBC_PATH" ]; then
-      echo "ERROR: cbc not found in PATH (conda env not active or coin-or-cbc missing)"
-      echo "CONDA_PREFIX=$CONDA_PREFIX"
-      python -c "import os; print('PATH=', os.environ.get('PATH',''))"
-      exit 1
-    fi
-    file "$CBC_PATH" || true
-    "$CBC_PATH" --version || true
-    echo "CBC_PATH=$CBC_PATH" >> $GITHUB_ENV
-
       - name: Build macOS app with PyInstaller
-        shell: bash -l {0}
+        shell: 'bash -l {0}'
         run: |
           pyinstaller \
             --clean \
@@ -218,7 +201,6 @@ jobs:
             --add-data "$(python -c 'import pulp, os; print(os.path.dirname(pulp.__file__))'):pulp" \
             --add-data "build_number.txt:." \
             --add-data "build_date.txt:." \
-            --add-binary "$CBC_PATH:." \
             pvihk.py
 
       - name: Prepare content for DMG
