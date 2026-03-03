@@ -218,7 +218,22 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
                 os.environ['PATH'] = cbc_dir + os.pathsep + os.environ.get('PATH', '')
 
 
-    prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
+    # Solver selection
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+        # On Windows ARM, PuLP may prefer win/arm64; force win/64 (x64 runs via emulation)
+        base = getattr(sys, '_MEIPASS', None)
+        cbc_exe = None
+        if base:
+            cand = os.path.join(base, 'pulp', 'solverdir', 'cbc', 'win', '64', 'cbc.exe')
+            if os.path.isfile(cand):
+                cbc_exe = cand
+        if cbc_exe:
+            prob.solve(pulp.COIN_CMD(path=cbc_exe, timeLimit=10, msg=True))
+        else:
+            prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
+    else:
+        prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
+
     end_time = time.time()
 
     solver_status = pulp.LpStatus[prob.status]
