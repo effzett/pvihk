@@ -1,3 +1,63 @@
+
+
+import sys
+import os
+
+def get_cbc_path():
+    """Return absolute path to a CBC executable.
+
+    In packaged builds we use PuLP's bundled solver under pulp/solverdir.
+    On Windows we always pick win/64/cbc.exe (works on x64 and on Windows ARM via x64 emulation).
+    """
+    import shutil
+    from pathlib import Path
+
+    # Not bundled: let PuLP/OS PATH decide
+    if not getattr(sys, "frozen", False):
+        return shutil.which("cbc") or ""
+
+    base = Path(getattr(sys, "_MEIPASS"))
+    pulp_root = base / "pulp"
+
+    if os.name == "nt":
+        cbc64 = pulp_root / "solverdir" / "cbc" / "win" / "64" / "cbc.exe"
+        if cbc64.exists():
+            return str(cbc64)
+        # fallback: first cbc.exe we can find
+        cands = sorted(pulp_root.glob("solverdir/cbc/win/**/cbc*.exe"))
+        return str(cands[0]) if cands else ""
+
+    if sys.platform == "darwin":
+        cands = sorted(pulp_root.glob("solverdir/cbc/osx/**/cbc"))
+        return str(cands[0]) if cands else ""
+
+    cands = sorted(pulp_root.glob("solverdir/cbc/linux/**/cbc"))
+    return str(cands[0]) if cands else ""
+
+def ensure_cbc_on_path():
+    """Ensure bundled 'cbc' is present and executable when running from a PyInstaller bundle."""
+    if getattr(sys, "frozen", False):
+        base_path = sys._MEIPASS
+        cbc = os.path.join(base_path, "cbc")
+
+        # If the binary was bundled, make sure it is executable (macOS can lose exec bits after packaging).
+        try:
+            if os.path.exists(cbc):
+                os.chmod(cbc, 0o755)
+        except Exception:
+            pass
+
+        # Remove quarantine attribute if present (best-effort).
+        try:
+            import subprocess
+            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        # Put extraction directory first in PATH so PuLP finds 'cbc' without needing a path= argument.
+        os.environ["PATH"] = base_path + os.pathsep + os.environ.get("PATH", "")
+
+
 import sys
 import os
 import platform
@@ -10,69 +70,6 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QAbstractItemView, QListWidgetItem,
     QHeaderView, QTableWidgetItem, QFileDialog, QMessageBox, QListWidget
 )
-
-# --- CBC / PuLP packaging helper ---
-def ensure_cbc_on_path():
-    """Ensure PuLP can find bundled CBC (cbc/cbc.exe) in packaged builds.
-
-    PuLP's PULP_CBC_CMD locates 'cbc' via PATH. In PyInstaller --onefile builds, bundled
-    binaries are extracted to sys._MEIPASS at runtime; we prepend likely locations to PATH.
-    """
-    import os
-    import sys
-
-    if not getattr(sys, "frozen", False):
-        return
-
-    candidates = []
-    base_meipass = getattr(sys, "_MEIPASS", None)
-    if base_meipass:
-        candidates.append(base_meipass)
-
-    # directory of the running executable (.app/Contents/MacOS on macOS)
-    try:
-        candidates.append(os.path.dirname(sys.executable))
-    except Exception:
-        pass
-
-    # prepend candidates to PATH
-    path = os.environ.get("PATH", "")
-    parts = [p for p in path.split(os.pathsep) if p]
-    new_parts = []
-    for d in candidates:
-        if d and d not in new_parts:
-            new_parts.append(d)
-    for p in parts:
-        if p not in new_parts:
-            new_parts.append(p)
-    os.environ["PATH"] = os.pathsep.join(new_parts)
-
-    # best-effort: make cbc executable on macOS/Linux and remove quarantine on macOS
-    try:
-        for d in candidates:
-            for name in ("cbc", "cbc.exe"):
-                cbc_path = os.path.join(d, name)
-                if os.path.exists(cbc_path):
-                    if os.name != "nt":
-                        try:
-                            os.chmod(cbc_path, 0o755)
-                        except Exception:
-                            pass
-                    if sys.platform == "darwin":
-                        try:
-                            import subprocess
-                            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc_path],
-                                           check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        except Exception:
-                            pass
-                    return
-    except Exception:
-        pass
-
-# Must run early, before any PuLP solver availability checks / solves
-ensure_cbc_on_path()
-# --- end helper ---
-
 
 import pulp
 from collections import defaultdict
@@ -107,6 +104,9 @@ if getattr(sys, 'frozen', False):
 else:
     # Normal als .py Script
     BASIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# CBC-Binary auf macOS ausführbar machen (Permissions gehen beim Bundling verloren)
+ensure_cbc_on_path()
 
 # Für Multithreading
 # Signale aus dem Optimierungsblock
@@ -227,7 +227,12 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
 
     import time
     start_time = time.time()
-    prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
+    # Im gebündelten Zustand CBC-Pfad explizit übergeben
+    if getattr(sys, 'frozen', False):
+        solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True, path=get_cbc_path())
+    else:
+        solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True)
+    prob.solve(solver)
     end_time = time.time()
 
     solver_status = pulp.LpStatus[prob.status]
