@@ -134,8 +134,18 @@ jobs:
             New-Item -ItemType Directory -Path "dist"
           }
 
-      - name: Run NSIS
-        run: makensis /DVERSION=${{ needs.init.outputs.version }} installer/pvihk_installer.nsi
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y
+
+      - name: Build Windows Installer (NSIS)
+        shell: pwsh
+        run: |
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (!(Test-Path $nsis)) {
+              throw "makensis.exe not found"
+          }
+          & $nsis /DVERSION=${{ env.VERSION }} installer/pvihk_installer.nsi
 
       - name: Check if EXEs were built
         shell: pwsh
