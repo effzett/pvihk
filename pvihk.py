@@ -1,41 +1,3 @@
-
-
-import sys
-import os
-
-def get_cbc_path():
-    if getattr(sys, "frozen", False):
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.dirname(__file__)
-    return os.path.join(base_path, "cbc")
-
-
-
-def ensure_cbc_on_path():
-    """Ensure bundled 'cbc' is present and executable when running from a PyInstaller bundle."""
-    if getattr(sys, "frozen", False):
-        base_path = sys._MEIPASS
-        cbc = os.path.join(base_path, "cbc")
-
-        # If the binary was bundled, make sure it is executable (macOS can lose exec bits after packaging).
-        try:
-            if os.path.exists(cbc):
-                os.chmod(cbc, 0o755)
-        except Exception:
-            pass
-
-        # Remove quarantine attribute if present (best-effort).
-        try:
-            import subprocess
-            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-
-        # Put extraction directory first in PATH so PuLP finds 'cbc' without needing a path= argument.
-        os.environ["PATH"] = base_path + os.pathsep + os.environ.get("PATH", "")
-
-
 import sys
 import os
 import platform
@@ -82,9 +44,6 @@ if getattr(sys, 'frozen', False):
 else:
     # Normal als .py Script
     BASIS_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# CBC-Binary auf macOS ausführbar machen (Permissions gehen beim Bundling verloren)
-ensure_cbc_on_path()
 
 # Für Multithreading
 # Signale aus dem Optimierungsblock
@@ -205,10 +164,22 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
 
     import time
     start_time = time.time()
-    # CBC solver (PuLP-bundled) via PATH; do not pass path= to PULP_CBC_CMD
-    ensure_cbc_on_path()
-    solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True)
-    prob.solve(solver)
+    # Windows ARM: force PuLP to use bundled win/64 CBC via PATH (x64 works on ARM via emulation)
+
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+
+        base = getattr(sys, '_MEIPASS', None)
+
+        if base:
+
+            cbc_dir = os.path.join(base, 'pulp', 'solverdir', 'cbc', 'win', '64')
+
+            if os.path.isdir(cbc_dir):
+
+                os.environ['PATH'] = cbc_dir + os.pathsep + os.environ.get('PATH', '')
+
+
+    prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
     end_time = time.time()
 
     solver_status = pulp.LpStatus[prob.status]
