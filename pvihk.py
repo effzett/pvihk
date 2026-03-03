@@ -130,10 +130,49 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         prob += belastung[p] - mittlere_belastung <= abweichung[p]
         prob += mittlere_belastung - belastung[p] <= abweichung[p]
 
-    # Hier erfolgt die Gewichtung: Gleichverteilung / Anwesenheit
+    # =========================================================================
+    # ERWEITERUNG: Weitergabe-Optimierung (2025-03)
+    # y[p1,p2] = 1 wenn Paar (p1,p2) mindestens eine Klausur teilt.
+    # lambda=0 und kein max_partner: kein Einfluss, keine y-Variablen (kein Overhead).
+    # Zum Entfernen: diesen Block und den lambda_term in der Zielfunktion loeschen.
+    # =========================================================================
+    from itertools import combinations as _comb
+
+    lambda_partner = float(eingabedaten.get("lambda_partner", 0.0))
+    max_partner    = eingabedaten.get("max_partner", None)
+
+    if lambda_partner > 0.0 or max_partner is not None:
+        korrektor_paare = list(_comb(korrektornamen, 2))
+
+        # y[p1,p2]: binaere Variable - Paar teilt mindestens eine Klausur
+        y = pulp.LpVariable.dicts("y",
+            [(p1, p2) for p1, p2 in korrektor_paare],
+            0, 1, pulp.LpBinary)
+
+        # Aktivierungsbedingung: y[p1,p2] >= x[k,p1] + x[k,p2] - 1 fuer alle k
+        for k in alle_klausuren:
+            for p1, p2 in korrektor_paare:
+                prob += y[p1, p2] >= x[k, p1] + x[k, p2] - 1
+
+        # Optionale harte Schranke: max. N verschiedene Partner pro Korrektor
+        if max_partner is not None:
+            for p in korrektornamen:
+                prob += pulp.lpSum(
+                    y[p1, p2] for p1, p2 in korrektor_paare if p == p1 or p == p2
+                ) <= max_partner
+
+        lambda_term = lambda_partner * pulp.lpSum(
+            y[p1, p2] for p1, p2 in korrektor_paare
+        )
+    else:
+        lambda_term = 0  # lambda=0 und keine Schranke: kein Einfluss auf LP
+    # === ENDE ERWEITERUNG ===
+
+    # Zielfunktion: Gleichverteilung + Anwesenheit + Buendelung
     prob += (
         1.0 * pulp.lpSum(abweichung[p] for p in korrektornamen) +
-        0.1 * pulp.lpSum(anwesenheit[p, t] for p in korrektornamen for t in [0, 1])
+        0.1 * pulp.lpSum(anwesenheit[p, t] for p in korrektornamen for t in [0, 1]) +
+        lambda_term  # ERWEITERUNG: 0 wenn deaktiviert, sonst lambda * Anzahl_Paare
     )
 
     # Jede Klausur (Präsenz + nur-Klausur) bekommt genau anzahl_korrektoren Korrektoren
@@ -393,6 +432,12 @@ class MainWindow(QMainWindow,Ui_MainWindow):
         self.pushButtonCancelOptimize.setEnabled(False)
 
         self.letztes_pdf_data = None  # Inhalt des aktuell erzeugten PDFs (Bytes)
+
+        # ERWEITERUNG: Weitergabe-Optimierung - Initialwerte (zum Entfernen: diese 2 Zeilen loeschen)
+        self.lambda_partner = 0.5   # Gewichtung Paar-Buendelung (0=aus)
+        self.max_partner    = None  # Harte Schranke (None=inaktiv)
+        # === ENDE ERWEITERUNG ===
+
         self.actionPDF_abspeichern.triggered.connect(self.pdf_abspeichern)
 
         self.actionSession_save.triggered.connect(self.session_save)
@@ -633,6 +678,11 @@ class MainWindow(QMainWindow,Ui_MainWindow):
 
         # 5. Prüfungszeitslots (aus Dialog oder Standard)
         eingabedaten["zeitslots"] = self.zeitslots  # <--- hier ergänzen
+
+        # ERWEITERUNG: Weitergabe-Optimierung - Parameter weitergeben (zum Entfernen: 2 Zeilen loeschen)
+        eingabedaten["lambda_partner"] = self.lambda_partner
+        eingabedaten["max_partner"]    = self.max_partner
+        # === ENDE ERWEITERUNG ===
 
         return eingabedaten
 
@@ -1060,6 +1110,11 @@ class MainWindow(QMainWindow,Ui_MainWindow):
         if dialog.exec():
             neue_zeitslots = dialog.get_pruefungszeiten()
 
+            # ERWEITERUNG: Weitergabe-Parameter aus Dialog (zum Entfernen: 2 Zeilen loeschen)
+            self.lambda_partner = dialog.get_lambda_partner()
+            self.max_partner    = dialog.get_max_partner()
+            # === ENDE ERWEITERUNG ===
+
             # Zeitslots übernehmen, wenn sie sich geändert haben
             if neue_zeitslots != self.zeitslots:
                 self.zeitslots = neue_zeitslots
@@ -1095,6 +1150,15 @@ class MainWindow(QMainWindow,Ui_MainWindow):
             if isinstance(data.get("zeitslots"), list) and all(isinstance(z, list) for z in data["zeitslots"]):
                 self.zeitslots = data["zeitslots"]
 
+            # ERWEITERUNG: Weitergabe-Parameter laden (zum Entfernen: diesen Block loeschen)
+            if "lambda_partner" in data:
+                self.lambda_partner = float(data["lambda_partner"])
+            if data.get("max_partner_aktiv") and "max_partner" in data:
+                self.max_partner = int(data["max_partner"])
+            else:
+                self.max_partner = None
+            # === ENDE ERWEITERUNG ===
+
         except Exception as e:
             print(f"Fehler beim Laden der Präferenzen: {e}")
 
@@ -1115,6 +1179,12 @@ class MainWindow(QMainWindow,Ui_MainWindow):
             # Nur Zeitslots aus MainWindow aktualisieren
             data["zeitslots"] = self.zeitslots
             data["version"] = 2
+
+            # ERWEITERUNG: Weitergabe-Parameter mitschreiben (zum Entfernen: 3 Zeilen loeschen)
+            data["lambda_partner"]    = self.lambda_partner
+            data["max_partner_aktiv"] = self.max_partner is not None
+            data["max_partner"]       = self.max_partner if self.max_partner is not None else 3
+            # === ENDE ERWEITERUNG ===
 
             with open(self.preferences_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
