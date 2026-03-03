@@ -88,6 +88,7 @@ jobs:
           channels: conda-forge,defaults
 
       - name: Install pip-only packages
+        shell: 'bash -l {0}'
         run: |
           pip install pyinstaller fpdf==1.7.2
 
@@ -97,6 +98,19 @@ jobs:
         run: |
           PULP_PATH=$(python -c "import pulp, os; print(os.path.dirname(pulp.__file__))")
           echo "pulp-path=$PULP_PATH" >> $GITHUB_OUTPUT
+
+      - name: Find PuLP CBC (Windows)
+        id: find_cbc_win
+        shell: 'bash -l {0}'
+        run: |
+          CBC_PATH=$(python -c "import pulp; from pathlib import Path; p=Path(pulp.__file__).parent; cands=list(p.rglob('solverdir/cbc/**/cbc*.exe')); print(cands[0] if cands else '')")
+          echo "cbc-path=$CBC_PATH" >> $GITHUB_OUTPUT
+          echo "CBC_PATH=$CBC_PATH" >> $GITHUB_ENV
+          echo "CBC_PATH=$CBC_PATH"
+          if [ -z "$CBC_PATH" ]; then
+            echo "ERROR: PuLP-bundled cbc.exe not found under pulp/solverdir"
+            exit 1
+          fi
 
       - name: Read build number
         id: read_build
@@ -118,7 +132,7 @@ jobs:
             --add-data "${{ steps.find_pulp.outputs.pulp-path }};pulp" \
             --add-data "build_number.txt;." \
             --add-data "build_date.txt;." \
-            --add-binary "assets/cbc.exe;." \
+            --add-binary "${{ steps.find_cbc_win.outputs.cbc-path }};." \
             --collect-submodules PySide6 \
             --collect-data PySide6 \
             --distpath dist \
@@ -190,6 +204,7 @@ jobs:
           channels: conda-forge,defaults
 
       - name: Install pip-only packages
+        shell: 'bash -l {0}'
         run: |
           pip install fpdf==1.7.2 pyinstaller
 
@@ -197,6 +212,19 @@ jobs:
         id: read_build
         shell: bash
         run: echo "BUILD_NUMBER=$(cat build_number.txt)" >> $GITHUB_ENV
+
+      - name: Find PuLP CBC (macOS)
+        id: find_cbc_mac
+        shell: 'bash -l {0}'
+        run: |
+          CBC_PATH=$(python -c "import pulp; from pathlib import Path; p=Path(pulp.__file__).parent; cands=list(p.rglob('solverdir/cbc/osx/**/cbc')); print(cands[0] if cands else '')")
+          echo "cbc-path=$CBC_PATH" >> $GITHUB_OUTPUT
+          echo "CBC_PATH=$CBC_PATH" >> $GITHUB_ENV
+          echo "CBC_PATH=$CBC_PATH"
+          if [ -z "$CBC_PATH" ]; then
+            echo "ERROR: PuLP-bundled cbc not found under pulp/solverdir/cbc/osx"
+            exit 1
+          fi
 
       - name: Build macOS app with PyInstaller
         shell: 'bash -l {0}'
@@ -211,6 +239,7 @@ jobs:
             --add-data "$(python -c 'import pulp, os; print(os.path.dirname(pulp.__file__))'):pulp" \
             --add-data "build_number.txt:." \
             --add-data "build_date.txt:." \
+            --add-binary "$CBC_PATH:." \
             pvihk.py
 
       - name: Prepare content for DMG
