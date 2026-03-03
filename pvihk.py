@@ -4,35 +4,13 @@ import sys
 import os
 
 def get_cbc_path():
-    """Return absolute path to a CBC executable.
+    if getattr(sys, "frozen", False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(__file__)
+    return os.path.join(base_path, "cbc")
 
-    In packaged builds we use PuLP's bundled solver under pulp/solverdir.
-    On Windows we always pick win/64/cbc.exe (works on x64 and on Windows ARM via x64 emulation).
-    """
-    import shutil
-    from pathlib import Path
 
-    # Not bundled: let PuLP/OS PATH decide
-    if not getattr(sys, "frozen", False):
-        return shutil.which("cbc") or ""
-
-    base = Path(getattr(sys, "_MEIPASS"))
-    pulp_root = base / "pulp"
-
-    if os.name == "nt":
-        cbc64 = pulp_root / "solverdir" / "cbc" / "win" / "64" / "cbc.exe"
-        if cbc64.exists():
-            return str(cbc64)
-        # fallback: first cbc.exe we can find
-        cands = sorted(pulp_root.glob("solverdir/cbc/win/**/cbc*.exe"))
-        return str(cands[0]) if cands else ""
-
-    if sys.platform == "darwin":
-        cands = sorted(pulp_root.glob("solverdir/cbc/osx/**/cbc"))
-        return str(cands[0]) if cands else ""
-
-    cands = sorted(pulp_root.glob("solverdir/cbc/linux/**/cbc"))
-    return str(cands[0]) if cands else ""
 
 def ensure_cbc_on_path():
     """Ensure bundled 'cbc' is present and executable when running from a PyInstaller bundle."""
@@ -227,11 +205,9 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
 
     import time
     start_time = time.time()
-    # Im gebündelten Zustand CBC-Pfad explizit übergeben
-    if getattr(sys, 'frozen', False):
-        solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True, path=get_cbc_path())
-    else:
-        solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True)
+    # CBC solver (PuLP-bundled) via PATH; do not pass path= to PULP_CBC_CMD
+    ensure_cbc_on_path()
+    solver = pulp.PULP_CBC_CMD(timeLimit=10, msg=True)
     prob.solve(solver)
     end_time = time.time()
 
