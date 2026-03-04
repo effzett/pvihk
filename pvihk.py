@@ -1,41 +1,3 @@
-
-
-import sys
-import os
-
-def get_cbc_path():
-    if getattr(sys, "frozen", False):
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.dirname(__file__)
-    return os.path.join(base_path, "cbc")
-
-
-
-def ensure_cbc_on_path():
-    """Ensure bundled 'cbc' is present and executable when running from a PyInstaller bundle."""
-    if getattr(sys, "frozen", False):
-        base_path = sys._MEIPASS
-        cbc = os.path.join(base_path, "cbc")
-
-        # If the binary was bundled, make sure it is executable (macOS can lose exec bits after packaging).
-        try:
-            if os.path.exists(cbc):
-                os.chmod(cbc, 0o755)
-        except Exception:
-            pass
-
-        # Remove quarantine attribute if present (best-effort).
-        try:
-            import subprocess
-            subprocess.run(["xattr", "-d", "com.apple.quarantine", cbc], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-
-        # Put extraction directory first in PATH so PuLP finds 'cbc' without needing a path= argument.
-        os.environ["PATH"] = base_path + os.pathsep + os.environ.get("PATH", "")
-
-
 import sys
 import os
 import platform
@@ -79,11 +41,6 @@ PREFERENCES_FILE = Path.home() / ".preferences.json"
 if getattr(sys, 'frozen', False):
     # Gebündelt als EXE oder APP
     BASIS_DIR = os.path.dirname(sys.executable)
-    # CBC-Binary ausführbar machen (macOS verliert Permissions beim Bundling)
-    cbc_path = os.path.join(BASIS_DIR, 'cbc')
-    if os.path.exists(cbc_path):
-        os.chmod(cbc_path, 0o755)
-        os.environ['PATH'] = BASIS_DIR + os.pathsep + os.environ.get('PATH', '')
 else:
     # Normal als .py Script
     BASIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -152,6 +109,24 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
     anzahl_tag1 = (len(praesenz_klausuren) + 1) // 2
     anzahl_tag2 = len(praesenz_klausuren) - anzahl_tag1
 
+    # === ERWEITERUNG: Warnung wenn mehr Prueflinge als Zeitslots ===
+    slots_tag1 = len(sortierte_zeiten[0])
+    slots_tag2 = len(sortierte_zeiten[1])
+    warnungen = []
+    if anzahl_tag1 > slots_tag1:
+        warnungen.append(
+            f"Tag 1: {anzahl_tag1} Prueflinge, aber nur {slots_tag1} Zeitslots. "
+            f"Bitte mindestens {anzahl_tag1} Zeiten in den Einstellungen eintragen."
+        )
+    if anzahl_tag2 > slots_tag2:
+        warnungen.append(
+            f"Tag 2: {anzahl_tag2} Prueflinge, aber nur {slots_tag2} Zeitslots. "
+            f"Bitte mindestens {anzahl_tag2} Zeiten in den Einstellungen eintragen."
+        )
+    if warnungen:
+        raise ValueError("Zu wenig Zeitslots: " + " | ".join(warnungen))
+    # === ENDE ERWEITERUNG ===
+
     prob = pulp.LpProblem("Korrekturverteilung", pulp.LpMinimize)
 
     # x für ALLE Kandidaten (Präsenz + nur Klausur)
@@ -173,10 +148,49 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
         prob += belastung[p] - mittlere_belastung <= abweichung[p]
         prob += mittlere_belastung - belastung[p] <= abweichung[p]
 
-    # Hier erfolgt die Gewichtung: Gleichverteilung / Anwesenheit
+    # =========================================================================
+    # ERWEITERUNG: Weitergabe-Optimierung (2025-03)
+    # y[p1,p2] = 1 wenn Paar (p1,p2) mindestens eine Klausur teilt.
+    # lambda=0 und kein max_partner: kein Einfluss, keine y-Variablen (kein Overhead).
+    # Zum Entfernen: diesen Block und den lambda_term in der Zielfunktion loeschen.
+    # =========================================================================
+    from itertools import combinations as _comb
+
+    lambda_partner = float(eingabedaten.get("lambda_partner", 0.0))
+    max_partner    = eingabedaten.get("max_partner", None)
+
+    if lambda_partner > 0.0 or max_partner is not None:
+        korrektor_paare = list(_comb(korrektornamen, 2))
+
+        # y[p1,p2]: binaere Variable - Paar teilt mindestens eine Klausur
+        y = pulp.LpVariable.dicts("y",
+            [(p1, p2) for p1, p2 in korrektor_paare],
+            0, 1, pulp.LpBinary)
+
+        # Aktivierungsbedingung: y[p1,p2] >= x[k,p1] + x[k,p2] - 1 fuer alle k
+        for k in alle_klausuren:
+            for p1, p2 in korrektor_paare:
+                prob += y[p1, p2] >= x[k, p1] + x[k, p2] - 1
+
+        # Optionale harte Schranke: max. N verschiedene Partner pro Korrektor
+        if max_partner is not None:
+            for p in korrektornamen:
+                prob += pulp.lpSum(
+                    y[p1, p2] for p1, p2 in korrektor_paare if p == p1 or p == p2
+                ) <= max_partner
+
+        lambda_term = lambda_partner * pulp.lpSum(
+            y[p1, p2] for p1, p2 in korrektor_paare
+        )
+    else:
+        lambda_term = 0  # lambda=0 und keine Schranke: kein Einfluss auf LP
+    # === ENDE ERWEITERUNG ===
+
+    # Zielfunktion: Gleichverteilung + Anwesenheit + Buendelung
     prob += (
         1.0 * pulp.lpSum(abweichung[p] for p in korrektornamen) +
-        0.1 * pulp.lpSum(anwesenheit[p, t] for p in korrektornamen for t in [0, 1])
+        0.1 * pulp.lpSum(anwesenheit[p, t] for p in korrektornamen for t in [0, 1]) +
+        lambda_term  # ERWEITERUNG: 0 wenn deaktiviert, sonst lambda * Anzahl_Paare
     )
 
     # Jede Klausur (Präsenz + nur-Klausur) bekommt genau anzahl_korrektoren Korrektoren
@@ -207,7 +221,37 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
 
     import time
     start_time = time.time()
-    prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
+    # Windows ARM: force PuLP to use bundled win/64 CBC via PATH (x64 works on ARM via emulation)
+
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+
+        base = getattr(sys, '_MEIPASS', None)
+
+        if base:
+
+            cbc_dir = os.path.join(base, 'pulp', 'solverdir', 'cbc', 'win', '64')
+
+            if os.path.isdir(cbc_dir):
+
+                os.environ['PATH'] = cbc_dir + os.pathsep + os.environ.get('PATH', '')
+
+
+    # Solver selection
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+        # On Windows ARM, PuLP may prefer win/arm64; force win/64 (x64 runs via emulation)
+        base = getattr(sys, '_MEIPASS', None)
+        cbc_exe = None
+        if base:
+            cand = os.path.join(base, 'pulp', 'solverdir', 'cbc', 'win', '64', 'cbc.exe')
+            if os.path.isfile(cand):
+                cbc_exe = cand
+        if cbc_exe:
+            prob.solve(pulp.COIN_CMD(path=cbc_exe, timeLimit=10, msg=True))
+        else:
+            prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
+    else:
+        prob.solve(pulp.PULP_CBC_CMD(timeLimit=10, msg=True))
+
     end_time = time.time()
 
     solver_status = pulp.LpStatus[prob.status]
@@ -421,6 +465,12 @@ class MainWindow(QMainWindow,Ui_MainWindow):
         self.pushButtonCancelOptimize.setEnabled(False)
 
         self.letztes_pdf_data = None  # Inhalt des aktuell erzeugten PDFs (Bytes)
+
+        # ERWEITERUNG: Weitergabe-Optimierung - Initialwerte (zum Entfernen: diese 2 Zeilen loeschen)
+        self.lambda_partner = 0.5   # Gewichtung Paar-Buendelung (0=aus)
+        self.max_partner    = None  # Harte Schranke (None=inaktiv)
+        # === ENDE ERWEITERUNG ===
+
         self.actionPDF_abspeichern.triggered.connect(self.pdf_abspeichern)
 
         self.actionSession_save.triggered.connect(self.session_save)
@@ -661,6 +711,11 @@ class MainWindow(QMainWindow,Ui_MainWindow):
 
         # 5. Prüfungszeitslots (aus Dialog oder Standard)
         eingabedaten["zeitslots"] = self.zeitslots  # <--- hier ergänzen
+
+        # ERWEITERUNG: Weitergabe-Optimierung - Parameter weitergeben (zum Entfernen: 2 Zeilen loeschen)
+        eingabedaten["lambda_partner"] = self.lambda_partner
+        eingabedaten["max_partner"]    = self.max_partner
+        # === ENDE ERWEITERUNG ===
 
         return eingabedaten
 
@@ -1088,6 +1143,11 @@ class MainWindow(QMainWindow,Ui_MainWindow):
         if dialog.exec():
             neue_zeitslots = dialog.get_pruefungszeiten()
 
+            # ERWEITERUNG: Weitergabe-Parameter aus Dialog (zum Entfernen: 2 Zeilen loeschen)
+            self.lambda_partner = dialog.get_lambda_partner()
+            self.max_partner    = dialog.get_max_partner()
+            # === ENDE ERWEITERUNG ===
+
             # Zeitslots übernehmen, wenn sie sich geändert haben
             if neue_zeitslots != self.zeitslots:
                 self.zeitslots = neue_zeitslots
@@ -1123,6 +1183,15 @@ class MainWindow(QMainWindow,Ui_MainWindow):
             if isinstance(data.get("zeitslots"), list) and all(isinstance(z, list) for z in data["zeitslots"]):
                 self.zeitslots = data["zeitslots"]
 
+            # ERWEITERUNG: Weitergabe-Parameter laden (zum Entfernen: diesen Block loeschen)
+            if "lambda_partner" in data:
+                self.lambda_partner = float(data["lambda_partner"])
+            if data.get("max_partner_aktiv") and "max_partner" in data:
+                self.max_partner = int(data["max_partner"])
+            else:
+                self.max_partner = None
+            # === ENDE ERWEITERUNG ===
+
         except Exception as e:
             print(f"Fehler beim Laden der Präferenzen: {e}")
 
@@ -1144,6 +1213,12 @@ class MainWindow(QMainWindow,Ui_MainWindow):
             data["zeitslots"] = self.zeitslots
             data["version"] = 2
 
+            # ERWEITERUNG: Weitergabe-Parameter mitschreiben (zum Entfernen: 3 Zeilen loeschen)
+            data["lambda_partner"]    = self.lambda_partner
+            data["max_partner_aktiv"] = self.max_partner is not None
+            data["max_partner"]       = self.max_partner if self.max_partner is not None else 3
+            # === ENDE ERWEITERUNG ===
+
             with open(self.preferences_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
 
@@ -1152,12 +1227,13 @@ class MainWindow(QMainWindow,Ui_MainWindow):
             print(f"Fehler beim Speichern der Präferenzen: {e}")
 
 
-app = QApplication(sys.argv)
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
 
-if platform.system() == "Windows":
-    app.setStyle("Fusion")
+    if platform.system() == "Windows":
+        app.setStyle("Fusion")
 
-window = MainWindow()
-window.show()
+    window = MainWindow()
+    window.show()
 
-app.exec()
+    app.exec()

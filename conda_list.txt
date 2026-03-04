@@ -1,0 +1,96 @@
+# packages in environment at /Users/internet/anaconda3/envs/pvihk:
+#
+# Name                       Version          Build                 Channel
+altgraph                     0.17.4           pyhd8ed1ab_1          conda-forge
+amply                        0.1.6            pyhd8ed1ab_1          conda-forge
+bzip2                        1.0.8            h80987f9_6
+c-ares                       1.34.5           h5505292_0            conda-forge
+ca-certificates              2025.12.2        hca03da5_0
+coin-or-cbc                  2.10.10          hfaca913_0            conda-forge
+coin-or-cgl                  0.60.7           hf050ae7_0            conda-forge
+coin-or-clp                  1.17.8           h65c2c7c_0            conda-forge
+coin-or-osi                  0.108.8          h19bcb3e_0            conda-forge
+coin-or-utils                2.11.8           h8717b36_0            conda-forge
+coincbc                      2.10.10          0_metapackage         conda-forge
+cyrus-sasl                   2.1.27           h59bf3fd_6            conda-forge
+docutils                     0.21.2           pyhd8ed1ab_1          conda-forge
+expat                        2.7.0            h286801f_0            conda-forge
+fpdf                         1.7.2            pypi_0                pypi
+freetype                     2.12.1           hadb7bae_2            conda-forge
+gettext                      0.21.1           h0186832_0            conda-forge
+icu                          73.2             hc8870d7_0            conda-forge
+importlib-metadata           8.6.1            pyha770c72_0          conda-forge
+iniconfig                    2.3.0            py312hca03da5_0
+jpeg                         9e               h1a8c8d9_3            conda-forge
+krb5                         1.20.1           h69eda48_0            conda-forge
+lerc                         4.0.0            h9a09cb3_0            conda-forge
+libabseil                    20250127.0       cxx17_h313beb8_0
+libblas                      3.9.0            31_h10e41b3_openblas  conda-forge
+libcblas                     3.9.0            31_hb3479ef_openblas  conda-forge
+libclang13                   14.0.6           default_he70ec0d_0    conda-forge
+libcurl                      8.12.1           hde089ae_0
+libcxx                       14.0.6           h848a8c0_0
+libdeflate                   1.22             hd74edd7_0            conda-forge
+libedit                      3.1.20230828     h80987f9_0
+libev                        4.33             h93a5062_2            conda-forge
+libexpat                     2.7.0            h286801f_0            conda-forge
+libffi                       3.4.4            hca03da5_1
+libgfortran                  14.2.0           heb5dd2a_105          conda-forge
+libgfortran5                 14.2.0           h2c44a93_105          conda-forge
+libglib                      2.78.4           h0a96307_0
+libiconv                     1.18             hfe07756_1            conda-forge
+liblapack                    3.9.0            31_hc9a63f6_openblas  conda-forge
+liblapacke                   3.9.0            31_hbb7bcf8_openblas  conda-forge
+libllvm14                    14.0.6           hf6e71e7_1            conda-forge
+libnghttp2                   1.57.0           h62f6fdd_0
+libntlm                      1.8              h5505292_0            conda-forge
+libopenblas                  0.3.29           openmp_hf332438_0     conda-forge
+libpng                       1.6.43           h091b4b1_0            conda-forge
+libpq                        17.4             h02f6b3c_0
+libprotobuf                  5.29.3           h9f9f828_0
+libsqlite                    3.46.0           hfb93653_0            conda-forge
+libssh2                      1.11.1           h3e2b118_0
+libtiff                      4.7.0            h91aec0a_0
+libwebp-base                 1.5.0            h2471fea_0            conda-forge
+libxml2                      2.13.7           h0b34f26_0
+libxslt                      1.1.41           hf4d3faa_0
+libzlib                      1.2.13           hfb2fe0b_6            conda-forge
+llvm-openmp                  20.1.3           hdb05f8b_0            conda-forge
+lz4-c                        1.9.4            hb7217d7_0            conda-forge
+macholib                     1.16.3           pyhd8ed1ab_0          conda-forge
+minizip                      4.0.3            ha89c15f_0
+mysql                        8.4.0            h065ec36_2
+ncurses                      6.4              h313beb8_0
+openldap                     2.6.4            h9dd3a51_0            conda-forge
+openssl                      3.5.5            ha0b305a_0
+packaging                    25.0             pyh29332c3_1          conda-forge
+pcre2                        10.42            h26f9a81_0            conda-forge
+pip                          25.0             py312hca03da5_0
+pluggy                       1.6.0            pypi_0                pypi
+pulp                         2.8.0            py312h81bd7bf_0       conda-forge
+pygments                     2.19.2           py312hca03da5_0
+pyinstaller                  6.7.0            py312h26003be_0       conda-forge
+pyinstaller-hooks-contrib    2025.3           pyhd8ed1ab_0          conda-forge
+pyparsing                    3.2.3            pyhd8ed1ab_1          conda-forge
+pyside6                      6.7.2            py312h1f36caa_0
+pytest                       9.0.2            py312hca03da5_0
+python                       3.12.2           hdf0ec26_0_cpython    conda-forge
+python_abi                   3.12             7_cp312               conda-forge
+qtbase                       6.7.3            hb2d0045_0
+qtdeclarative                6.7.3            h99fb74b_0
+qtshadertools                6.7.3            h99fb74b_0
+qtsvg                        6.7.3            h77b951a_0
+qttools                      6.7.3            h3ace201_0
+qtwebchannel                 6.7.3            h99fb74b_0
+qtwebengine                  6.7.3            h0c5f7de_0
+qtwebsockets                 6.7.3            h99fb74b_0
+readline                     8.2              h1a28f6b_0
+setuptools                   75.8.0           py312hca03da5_0
+sqlite                       3.45.3           h80987f9_0
+tk                           8.6.14           h6ba3021_0
+tzdata                       2025a            h04d1e81_0
+wheel                        0.45.1           py312hca03da5_0
+xz                           5.6.4            h80987f9_1
+zipp                         3.21.0           pyhd8ed1ab_1          conda-forge
+zlib                         1.2.13           hfb2fe0b_6            conda-forge
+zstd                         1.5.6            hb46c0d2_0            conda-forge
