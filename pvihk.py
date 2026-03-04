@@ -109,6 +109,24 @@ def berechne_korrektorenverteilung(eingabedaten) -> dict:
     anzahl_tag1 = (len(praesenz_klausuren) + 1) // 2
     anzahl_tag2 = len(praesenz_klausuren) - anzahl_tag1
 
+    # === ERWEITERUNG: Warnung wenn mehr Prueflinge als Zeitslots ===
+    slots_tag1 = len(sortierte_zeiten[0])
+    slots_tag2 = len(sortierte_zeiten[1])
+    warnungen = []
+    if anzahl_tag1 > slots_tag1:
+        warnungen.append(
+            f"Tag 1: {anzahl_tag1} Prueflinge, aber nur {slots_tag1} Zeitslots. "
+            f"Bitte mindestens {anzahl_tag1} Zeiten in den Einstellungen eintragen."
+        )
+    if anzahl_tag2 > slots_tag2:
+        warnungen.append(
+            f"Tag 2: {anzahl_tag2} Prueflinge, aber nur {slots_tag2} Zeitslots. "
+            f"Bitte mindestens {anzahl_tag2} Zeiten in den Einstellungen eintragen."
+        )
+    if warnungen:
+        raise ValueError("Zu wenig Zeitslots: " + " | ".join(warnungen))
+    # === ENDE ERWEITERUNG ===
+
     prob = pulp.LpProblem("Korrekturverteilung", pulp.LpMinimize)
 
     # x für ALLE Kandidaten (Präsenz + nur Klausur)
@@ -1209,12 +1227,13 @@ class MainWindow(QMainWindow,Ui_MainWindow):
             print(f"Fehler beim Speichern der Präferenzen: {e}")
 
 
-app = QApplication(sys.argv)
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
 
-if platform.system() == "Windows":
-    app.setStyle("Fusion")
+    if platform.system() == "Windows":
+        app.setStyle("Fusion")
 
-window = MainWindow()
-window.show()
+    window = MainWindow()
+    window.show()
 
-app.exec()
+    app.exec()
