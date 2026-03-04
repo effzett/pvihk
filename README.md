@@ -62,18 +62,23 @@ Oder als ausführbare Datei (PyInstaller, Windows/macOS).
 
 ### 1. Korrektoren eintragen
 
-Im linken Bereich die Namen der Korrektoren eingeben. Pro Korrektor wird gesetzt:
+Im linken und rechten Bereich die Namen der Korrektoren eingeben. Pro Korrektor wird gesetzt:
 - **Tag 1 verfügbar** (Checkbox)
 - **Tag 2 verfügbar** (Checkbox)
 
 ### 2. Prüflinge eintragen
 
-Im rechten Bereich die Namen der Prüflinge eingeben. Prüflinge die nur eine Klausurkorrektur erhalten (keine Präsenzprüfung) erhalten das Prefix `X_`, z.B. `X_Fernstudent`.
+Im mittleren Bereich die Namen der Prüflinge eingeben. Prüflinge die nur eine Klausurkorrektur erhalten (keine Präsenzprüfung) erhalten das Prefix `X_`, z.B. `X_Fernstudent`.
 
 ### 3. Optimierung starten
 
 Schaltfläche **Berechnen** — der Solver läuft, das Ergebnis erscheint als Tagesplan und kann als PDF gespeichert werden.
 
+### 4. Einlesen und Speichern
+
+Die Korrektoren und die Prüflinge können über das Menü Datei separat gespeichert und eingelesen werden.
+
+Die aktuelle Konfiguration kann durch Sichern der Session komplett gespeichert und eingelesen werden.
 ---
 
 ## Einstellungen
@@ -82,6 +87,9 @@ Schaltfläche **Berechnen** — der Solver läuft, das Ergebnis erscheint als Ta
 
 | Einstellung | Beschreibung |
 |---|---|
+| **Anfangszeiten vormittags und Anfangszeiten nachmittags | Das definiert die Mittagspause
+| **Die Prüfungslänge jeweils für vormittags und nachmittags einstellbar | in 5 Minuten Schritten
+| **Das gilt immer für beide Tage! Man kann die so erstellten Zeiten unten manuell editieren | Zeiten sind frei eintragbar. Anzahl der Slots sind fest.
 | **Prüfungszeiten Tag 1** | Zeitslots für den ersten Prüfungstag (z.B. `09:00`, `10:00`, ...) |
 | **Prüfungszeiten Tag 2** | Zeitslots für den zweiten Prüfungstag |
 | **Lambda Paar-Bündelung** | Gewichtung der Weitergabe-Minimierung (0.0 = aus, höhere Werte = stärkere Bündelung) |
