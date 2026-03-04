@@ -120,7 +120,7 @@ Das Testscript prüft die Kernfunktion `berechne_korrektorenverteilung()` ohne G
 
 ## Verwandtes Projekt
 
-**[PIHK](https://github.com/internet-frank/pihk)** — Prüfungssimulation: berechnet rückwärts welche Punktzahlen zu einer gewünschten Note führen, unter Berücksichtigung der mehrstufigen Rundungsregeln der IHK.
+**[PIHK](https://github.com/effzett/pihk)** — Prüfungssimulation: berechnet rückwärts welche Punktzahlen zu einer gewünschten Note führen, unter Berücksichtigung der mehrstufigen Rundungsregeln der IHK.
 
 ---
 
