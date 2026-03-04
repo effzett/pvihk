@@ -1,71 +1,131 @@
-# Prüfungsverteilungprogramm für Prüfungen bei der IHK
-<img width="1071" alt="Bildschirmfoto 2025-05-04 um 12 50 53" src="https://github.com/user-attachments/assets/b0522e1b-2cfb-4a18-8a1c-25bb89fc3251" />
+# PVIHK — Prüfungs- und Korrektorenverteilung für IHK-Prüfungsausschüsse
 
-Das Szenario für das das Programm gemacht worden ist:
+**PVIHK** ist ein Desktop-Tool zur automatischen Verteilung von Prüflingen auf Korrektoren in IHK-Prüfungsausschüssen. Es löst das Zuordnungsproblem als Integer Linear Program (ILP) mit dem freien CBC-Solver und erzeugt einen druckfertigen PDF-Tagesplan.
 
-Es sind 2 Prüfungstage bestimmt worden. Nicht alle Korrektoren sind an beiden Prüfungstagen anwesend.
-Diese Daten wurden beim Ermitteln der Prüfungstage im Prüfungsausschuss abgestimmt und fix gesetzt.
+---
 
-Es geht nun darum die Prüfungsteilnehmer auf die 2 Tage optimal zu verteilen und der IHK einen Einladungsplan und eine Verteilrichtlinie als PDF zu erstellen.
+## Das Problem
 
-- Es geht davon aus, dass die Korrektoren sowohl die Klausuren als auch die Dokumentationen eines bestimmten Prüflings korrigieren.
-- Es müssen immer mindestens 3 Korrektoren zur Prüfung anwesend sein.
-- Es müssen immer 2 Korrektoren eine Klausur/Dokumentation korrigiert haben.
-- Es muss immer mindestens ein aktiver (Korrektor dieser Klausur/Dokumentation) Korrektor am Prüfungstag anwesend sein.
+Bei IHK-Abschlussprüfungen müssen Prüflinge auf Korrektoren-Paare verteilt werden. Dabei gelten mehrere Constraints gleichzeitig:
 
-Es müssen zu jedem Prüfungstag die Prüfungsteilnehmer so aufgeteilt werden,
-dass obige Bedingungen so erfüllt werden, dass die Korrektoren ungefähr eine ähnliche Anzahl Arbeiten korrigieren.
+- Jede Prüfung wird von genau 2 Korrektoren bewertet
+- Pro Prüfungstermin muss mindestens ein Korrektor des Paares anwesend sein
+- Die Prüfungslast soll gleichmäßig auf alle Korrektoren verteilt werden
+- Prüflinge ohne Präsenzprüfung (reine Klausurkorrektur, Prefix `X_`) werden gesondert behandelt
 
+Das manuelle Lösen dieses Problems — besonders bei eingeschränkten Verfügbarkeiten — ist aufwendig und fehleranfällig. PVIHK findet das Optimum automatisch.
 
-## Erforderliche Eingabedaten
+---
 
-### Korrektorenliste in utf8 (z.B. korrektorenliste.txt):
+## Features
+
+- **Automatische Optimierung** per ILP (PuLP + CBC-Solver)
+- **Faire Lastverteilung** unter allen Korrektoren
+- **Verfügbarkeitssteuerung** pro Korrektor und Tag
+- **X_-Kandidaten** (reine Klausurkorrektur, keine Präsenz) werden korrekt behandelt
+- **Paar-Bündelung** (optional): minimiert die Anzahl verschiedener Korrektorpaare, um Weitergabe-Komplexität zu reduzieren
+- **Harte Partner-Schranke** (optional): begrenzt wie viele verschiedene Partner ein Korrektor maximal hat
+- **PDF-Ausgabe**: druckfertiger Tagesplan mit Zeitslots, Versandlisten und Weitergabe-Übersicht
+- **Persistente Einstellungen**: Konfiguration wird als JSON gespeichert
+- **Plattformübergreifend**: läuft auf macOS und Windows
+
+---
+
+## Voraussetzungen
+
 ```
-Korrektor1
-Korrektor2
-Korrektor3
-Korrektor4
-```
-
-### Prüflingsliste in utf8 (z.B. prueflinge.txt):
-```
-Achenbach, Felix (1000001)
-Bergmann, Lina (1000002)
-Caspers, Jonas (1000003)
-Dreher, Miriam (1000004)
-Elsen, Paul (1000005)
-Fritsch, Hannah (1000006)
-Gärtner, Leo (1000007)
-Hübner, Sophie (1000008)
-Iversen, Max (1000009)
-Jakobsen, Lara (1000010)
-Kleinert, Tim (1000011)
-Lindholm, Marie (1000012)
-Mertens, Elias (1000013)
-Neumann, Jana (1000014)
-Ott, Fabian (1000015)
-Pohl, Amelie (1000016)
+Python 3.10+
+PySide6
+PuLP
+fpdf2
 ```
 
-Die Prüfungsliste kann auch als Datei direkt auf das mittlere Feld der Prüflinge per Drag-And-Drop gezogen werden.
-Die Korrektoreniste muss allerdings über das Menü eingelesen werden.
+Installation der Abhängigkeiten:
 
-### Einlesen / Abspeichern
-Unter dem Menü Datei kann man jeweils diese Daten einlesen.
-Mit Datei/Session speichern/einlesen kann die aktuelle Konfiguration abspeichern (nicht die kompletten korrektorenliste, sondern nur die verwendeten Korrektoren)
+```bash
+pip install PySide6 pulp fpdf2
+```
 
-### Einstellungen
-<img width="944" alt="Bildschirmfoto 2025-05-04 um 12 37 22" src="https://github.com/user-attachments/assets/ef833134-37c3-4f9b-9c25-18d98275370d" />
+---
 
-Im Einstellungsmenü kann man für die beiden Tage (im Moment geht das nur für beide Tage gleichzeitig) die Prüfungszeiten und Prüfungsdauer einstellen.
-Die Mittagspause wird dann automatisch berechnet und angezeigt.
+## Starten
 
-Nach der Einstellung muß die Aufteilung im Hauptdialog erneut erfolgen.
+```bash
+python pvihk.py
+```
 
-# PDF
-<img width="1141" alt="Bildschirmfoto 2025-05-04 um 12 51 22" src="https://github.com/user-attachments/assets/56a0f53c-4f63-4942-99e4-5739f2fd9403" />
-<img width="669" alt="Bildschirmfoto 2025-05-04 um 12 51 33" src="https://github.com/user-attachments/assets/ead99a40-90d7-4ef7-b0b3-5baabd8fe509" />
+Oder als ausführbare Datei (PyInstaller, Windows/macOS).
 
-Das erzeugte PDF kann man unter dem Menü Ansicht mit dem Standard PDF Viewer ansehen oder abspeichern.
+---
 
+## Bedienung
 
+### 1. Korrektoren eintragen
+
+Im linken Bereich die Namen der Korrektoren eingeben. Pro Korrektor wird gesetzt:
+- **Tag 1 verfügbar** (Checkbox)
+- **Tag 2 verfügbar** (Checkbox)
+
+### 2. Prüflinge eintragen
+
+Im rechten Bereich die Namen der Prüflinge eingeben. Prüflinge die nur eine Klausurkorrektur erhalten (keine Präsenzprüfung) erhalten das Prefix `X_`, z.B. `X_Fernstudent`.
+
+### 3. Optimierung starten
+
+Schaltfläche **Berechnen** — der Solver läuft, das Ergebnis erscheint als Tagesplan und kann als PDF gespeichert werden.
+
+---
+
+## Einstellungen
+
+Über **Einstellungen → Präferenzen** erreichbar:
+
+| Einstellung | Beschreibung |
+|---|---|
+| **Prüfungszeiten Tag 1** | Zeitslots für den ersten Prüfungstag (z.B. `09:00`, `10:00`, ...) |
+| **Prüfungszeiten Tag 2** | Zeitslots für den zweiten Prüfungstag |
+| **Lambda Paar-Bündelung** | Gewichtung der Weitergabe-Minimierung (0.0 = aus, höhere Werte = stärkere Bündelung) |
+| **Max. Partner (aktiv/inaktiv)** | Harte Obergrenze wie viele verschiedene Partner ein Korrektor haben darf |
+
+Die Anzahl der Zeitslots muss mindestens so groß sein wie die Anzahl der Prüflinge pro Tag. PVIHK warnt, wenn das nicht der Fall ist.
+
+---
+
+## Paar-Bündelung (Lambda-Parameter)
+
+Ohne Bündelung kann ein Korrektor mit 5 Prüfungen an 5 verschiedene Partner weitergeben — jede Klausur wandert zu einer anderen Person. Mit Lambda > 0 minimiert der Solver die Anzahl verschiedener Paare im System, was die Weitergabe-Logistik vereinfacht.
+
+- **Lambda = 0.0**: keine Bündelung, minimaler Rechenaufwand (Standard)
+- **Lambda = 0.5**: moderate Bündelung (empfohlen)
+- **Lambda = 3.0**: starke Bündelung, längere Rechenzeit bei großen Gruppen
+
+---
+
+## X_-Kandidaten
+
+Prüflinge mit dem Prefix `X_` erhalten Korrektoren zugewiesen, erscheinen aber nicht im Tagesplan (keine Anwesenheit erforderlich). Sie sind in den Versand- und Weitergabelisten des PDFs enthalten und mit `*` markiert.
+
+---
+
+## Tests
+
+```bash
+pip install pytest
+pytest test_pvihk.py -v
+```
+
+Das Testscript prüft die Kernfunktion `berechne_korrektorenverteilung()` ohne GUI — PySide6 wird gemockt. 11 Tests decken Solver-Korrektheit, Verfügbarkeit, Zeitslot-Validierung, Paar-Bündelung und PDF-Erzeugung ab.
+
+---
+
+## Verwandtes Projekt
+
+**[PIHK](https://github.com/internet-frank/pihk)** — Prüfungssimulation: berechnet rückwärts welche Punktzahlen zu einer gewünschten Note führen, unter Berücksichtigung der mehrstufigen Rundungsregeln der IHK.
+
+---
+
+## Autor
+
+Frank Zimmermann · [zenmeister.de](https://zenmeister.de)
+
+Entwickelt für den praktischen Einsatz in IHK-Prüfungsausschüssen. Contributions willkommen.
